@@ -3,11 +3,13 @@ package com.mochihop.game;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.DisplayCutout;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -24,6 +26,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private OnBackInvokedCallback backCallback;
+    private final NativeBridge bridge = new NativeBridge();
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -43,7 +46,16 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(false);
         s.setAllowFileAccess(false);            // android_asset is still readable
 
-        webView.addJavascriptInterface(new NativeBridge(this), "MochiNative");
+        bridge.init(this);
+        webView.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (Build.VERSION.SDK_INT >= 28) {
+                DisplayCutout cutout = insets.getDisplayCutout();
+                float density = getResources().getDisplayMetrics().density;
+                bridge.safeTopDp = cutout != null ? cutout.getSafeInsetTop() / density : 0f;
+            }
+            return v.onApplyWindowInsets(insets);
+        });
+        webView.addJavascriptInterface(bridge, "MochiNative");
         webView.loadUrl("file:///android_asset/game/index.html");
         setContentView(webView);
 
@@ -115,17 +127,47 @@ public class MainActivity extends Activity {
 
     /** Exposed to JavaScript as window.MochiNative. */
     static class NativeBridge {
-        private final Vibrator vibrator;
+        private Vibrator vibrator;
+        private SharedPreferences prefs;
+        volatile float safeTopDp = 0f;
 
-        NativeBridge(Context ctx) {
+        void init(Context ctx) {
             vibrator = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+            prefs = ctx.getSharedPreferences("mochihop", Context.MODE_PRIVATE);
+        }
+
+        /** Light "tick" on hop, "click" on score, "heavy" on splat. */
+        @JavascriptInterface
+        public void haptic(String kind) {
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            VibrationEffect effect;
+            if (Build.VERSION.SDK_INT >= 29) {
+                int id = "heavy".equals(kind) ? VibrationEffect.EFFECT_HEAVY_CLICK
+                        : "click".equals(kind) ? VibrationEffect.EFFECT_CLICK
+                        : VibrationEffect.EFFECT_TICK;
+                effect = VibrationEffect.createPredefined(id);
+            } else {
+                int ms = "heavy".equals(kind) ? 40 : "click".equals(kind) ? 14 : 6;
+                effect = VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE);
+            }
+            vibrator.vibrate(effect);
+        }
+
+        /** Saves live in SharedPreferences so they survive WebView storage clean-ups. */
+        @JavascriptInterface
+        public String getItem(String key) {
+            return prefs.getString(key, null);
         }
 
         @JavascriptInterface
-        public void vibrate(int ms) {
-            if (vibrator == null || !vibrator.hasVibrator()) return;
-            vibrator.vibrate(VibrationEffect.createOneShot(Math.max(1, Math.min(ms, 300)),
-                    VibrationEffect.DEFAULT_AMPLITUDE));
+        public void setItem(String key, String value) {
+            prefs.edit().putString(key, value).apply();
+        }
+
+        /** Height of the camera cutout area at the top of the screen, in CSS pixels. */
+        @JavascriptInterface
+        public float safeTop() {
+            return safeTopDp;
         }
     }
 }

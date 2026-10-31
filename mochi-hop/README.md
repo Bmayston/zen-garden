@@ -1,31 +1,43 @@
 # Mochi Hop 🍡
 
-A one-tap arcade game for Android. Tap to make **Mochi** hop through a bamboo grove
-over a raked-sand zen garden. Each bamboo gap you pass scores a point, and one hit
-squishes Mochi.
+A one-tap arcade game for Android. Tap to make **Mochi** hop between skewers of
+**hanami dango** (the pink, white and green rice dumplings eaten under the cherry
+blossoms) in a zen garden. Each gap scores a point. Touch a skewer and Mochi,
+being sticky, splats onto it, slides down and flops flat on the sand.
 
 ## The character
 
-Mochi is a round, squishy rice-cake with a leaf sprout on its head, big shiny eyes,
-rosy cheeks and a little cat mouth. It squashes and stretches when it hops, blinks
-while idle, opens its mouth mid-hop and goes ✕✕ when it gets squished.
+Mochi is a round, squishy rice cake. Its signature is the **sprout** on its head: two
+big leaves that spin like a helicopter on every hop, droop while it falls and point up
+when it scores. Mochi squashes and stretches, blinks, glances up and down, opens its
+mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its own
+"boing" sound.
 
 ## What's in the game
 
-- **One-tap controls**: tap anywhere to hop.
-- **Sakura petals** float in the gaps. Catch them to unlock friends:
+- **One tap to play, one tap to retry.** After a crash, tapping anywhere starts the next
+  run about 0.45 seconds later. Returning players skip the "Get Ready" screen.
+- **Hanami dango obstacles** with sharp skewer tips pointing into the gap.
+- **Sakura petals** float between skewers. Catch them to unlock friends, who all keep
+  the sprout:
   | Friend | Petals | Accessory |
   |---|---|---|
-  | Mochi | free | leaf sprout |
+  | Mochi | free | (just the sprout) |
   | Sakura | 25 | cherry blossom |
-  | Matcha | 60 | leaf sprout |
+  | Matcha | 60 | tea whisk |
   | Ube | 120 | bow |
   | Golden | 250 | crown |
-- **Day to sunset to night to dawn**: the sky changes as your score climbs.
-- **Medals**: Bronze 10, Silver 20, Gold 40, Jade 80.
-- **Difficulty ramps up**: gaps get narrower and the scroll speed increases.
-- Best score, petals and unlocked friends are saved on the device.
-- Synthesized sound effects with a mute toggle, plus vibration when Mochi is squished.
+- **Difficulty in clear steps:** very gentle for the first 3 gaps, then harder at 3, 10,
+  25 and 50 points.
+- **Sound:** a signature hop "boing", a score chime that climbs the scale with each gap,
+  a fanfare every 10 points, and a squishy splat. Background music is generated live:
+  koto-style plucks on a Japanese pentatonic scale.
+- **Haptics:** a light tick on each hop, a click on scoring and a heavy thump on a splat.
+  It can be switched off.
+- **The sky shifts** from day to sunset to night to dawn as your score climbs.
+  Medals: Bronze 10, Silver 20, Gold 40, Jade 80.
+- **Saves** go to Android's own app storage (SharedPreferences), not just the WebView.
+- **Notch-aware:** the score and buttons move below camera cutouts.
 - No image or audio files: everything is drawn and synthesized in code.
 
 ## Project layout
