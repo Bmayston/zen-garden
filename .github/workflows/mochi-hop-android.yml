@@ -16,6 +16,8 @@ jobs:
     defaults:
       run:
         working-directory: mochi-hop
+    env:
+      HAS_SIGNING: ${{ secrets.MOCHI_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,11 +28,36 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      - name: Build debug APK (for sideloading)
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: mochi-hop-debug-apk
           path: mochi-hop/app/build/outputs/apk/debug/*.apk
+
+      # ---- Signed release for Google Play (only when signing secrets exist; see RELEASING.md)
+      - name: Decode upload keystore
+        if: env.HAS_SIGNING == 'true'
+        run: echo "${{ secrets.MOCHI_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+
+      - name: Build signed release bundle
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MOCHI_KEYSTORE: ${{ runner.temp }}/upload.jks
+          MOCHI_KEYSTORE_PASSWORD: ${{ secrets.MOCHI_KEYSTORE_PASSWORD }}
+          MOCHI_KEY_ALIAS: ${{ secrets.MOCHI_KEY_ALIAS }}
+          MOCHI_KEY_PASSWORD: ${{ secrets.MOCHI_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Build unsigned release (checks minification when no secrets)
+        if: env.HAS_SIGNING != 'true'
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload release bundle
+        if: env.HAS_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mochi-hop-release-aab
+          path: mochi-hop/app/build/outputs/bundle/release/*.aab

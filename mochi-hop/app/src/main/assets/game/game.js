@@ -12,7 +12,8 @@
   // Setup & scaling
   // ---------------------------------------------------------------------------
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  const screenCtx = canvas.getContext('2d');
+  let ctx = screenCtx;
 
   const H = 640;          // virtual height; width adapts to the screen aspect ratio
   let W = 360;
@@ -84,6 +85,9 @@
     muted: store.get('muted', false),
     haptics: store.get('haptics', true),
     played: store.get('played', 0),
+    daily: store.get('daily', { date: '', best: 0, streak: 0, lastDate: '', runs: 0 }),
+    missions: store.get('missions', null),
+    totals: store.get('totals', { splats: 0, petals: 0, near: 0, runs: 0, score: 0 }),
   };
   let skinIndex = Math.max(0, SKINS.findIndex(s => s.id === save.skin));
 
@@ -166,6 +170,8 @@
     },
     milestone() { [0, 5, 9, 12].forEach((s, i) => tone(noteHz(s + 12), noteHz(s + 12), 0.2, 'triangle', 0.1, i * 0.07)); },
     petal()  { tone(1568, 2093, 0.18, 'sine', 0.1); tone(2093, 2637, 0.2, 'sine', 0.07, 0.05); },
+    close()  { tone(2637, 3520, 0.08, 'triangle', 0.07); tone(3136, 3951, 0.12, 'sine', 0.05, 0.05); },
+    mission() { [7, 12, 16, 19].forEach((s, i) => tone(noteHz(s), noteHz(s), 0.16, 'triangle', 0.1, i * 0.06)); },
     // Squishy "bloop" splat
     splat() {
       if (!audioOn()) return;
@@ -244,6 +250,135 @@
       if (native && native.haptic) native.haptic(kind);
       else if (navigator.vibrate) navigator.vibrate(kind === 'heavy' ? 40 : kind === 'click' ? 12 : 6);
     } catch (e) { /* ignore */ }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Seeded RNG for the daily challenge: everyone gets the same skewers each day
+  // ---------------------------------------------------------------------------
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function dateKey(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function seedFor(key) {
+    let h = 2166136261;
+    for (const ch of 'mochi-hop/' + key) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function prettyDate(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]}`;
+  }
+  let rng = Math.random;
+  const srand = (a, b) => a + rng() * (b - a);
+
+  function refreshDaily() {
+    const today = dateKey();
+    if (save.daily.date !== today) {
+      save.daily.date = today;
+      save.daily.best = 0;
+      save.daily.runs = 0;
+      store.set('daily', save.daily);
+    }
+    // a streak survives only if yesterday (or today) was played
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    if (save.daily.lastDate !== today && save.daily.lastDate !== dateKey(y) && save.daily.streak !== 0) {
+      save.daily.streak = 0;
+      store.set('daily', save.daily);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Missions: three small goals at a time, paid out in petals
+  // ---------------------------------------------------------------------------
+  const MISSION_POOL = [
+    { type: 'score_run', n: 5, reward: 4 },
+    { type: 'score_run', n: 15, reward: 10 },
+    { type: 'score_run', n: 30, reward: 20 },
+    { type: 'score_run', n: 50, reward: 35 },
+    { type: 'petals_run', n: 3, reward: 6 },
+    { type: 'petals_run', n: 6, reward: 12 },
+    { type: 'near_run', n: 2, reward: 6 },
+    { type: 'near_run', n: 5, reward: 15 },
+    { type: 'nopetal_run', n: 10, reward: 12 },
+    { type: 'splats_total', n: 15, reward: 6 },
+    { type: 'petals_total', n: 30, reward: 10 },
+    { type: 'near_total', n: 15, reward: 12 },
+    { type: 'runs_total', n: 10, reward: 6 },
+    { type: 'score_total', n: 100, reward: 12 },
+    { type: 'daily_play', n: 1, reward: 8 },
+  ].map(m => Object.assign(m, { id: `${m.type}:${m.n}` }));
+
+  function missionText(m) {
+    switch (m.type) {
+      case 'score_run': return `Score ${m.n} in one run`;
+      case 'petals_run': return `Catch ${m.n} petals in one run`;
+      case 'near_run': return `${m.n} close calls in one run`;
+      case 'nopetal_run': return `Score ${m.n} without a petal`;
+      case 'splats_total': return `Splat ${m.n} times`;
+      case 'petals_total': return `Catch ${m.n} petals`;
+      case 'near_total': return `Get ${m.n} close calls`;
+      case 'runs_total': return `Play ${m.n} runs`;
+      case 'score_total': return `Score ${m.n} points in total`;
+      case 'daily_play': return 'Play the daily challenge';
+    }
+    return '';
+  }
+  const missionDef = id => MISSION_POOL.find(m => m.id === id);
+
+  function pickMission(exclude) {
+    const options = MISSION_POOL.filter(m => !exclude.includes(m.id));
+    return { id: options[Math.floor(Math.random() * options.length)].id, progress: 0, done: false };
+  }
+  // Replaces finished missions; only writes to storage when something changed.
+  function ensureMissions() {
+    const old = Array.isArray(save.missions) ? save.missions : [];
+    const used = old.map(m => m.id);
+    const list = [];
+    let changed = old.length !== 3;
+    for (const m of old) {
+      if (list.length >= 3) break;
+      if (!missionDef(m.id) || m.done) { changed = true; continue; }
+      list.push(m);
+    }
+    while (list.length < 3) {
+      const m = pickMission(used.concat(list.map(x => x.id)));
+      used.push(m.id);
+      list.push(m);
+    }
+    if (changed) { save.missions = list; store.set('missions', list); }
+  }
+
+  // Applies a finished run to the missions; returns petals earned.
+  function applyMissions(run) {
+    let earned = 0;
+    for (const m of save.missions) {
+      if (m.done) continue;
+      const d = missionDef(m.id);
+      let v = m.progress;
+      switch (d.type) {
+        case 'score_run': v = Math.max(v, run.score); break;
+        case 'petals_run': v = Math.max(v, run.petals); break;
+        case 'near_run': v = Math.max(v, run.near); break;
+        case 'nopetal_run': v = Math.max(v, run.petalFreeScore); break;
+        case 'splats_total': v += 1; break;
+        case 'petals_total': v += run.petals; break;
+        case 'near_total': v += run.near; break;
+        case 'runs_total': v += 1; break;
+        case 'score_total': v += run.score; break;
+        case 'daily_play': if (run.daily) v = 1; break;
+      }
+      m.progress = Math.min(v, d.n);
+      if (m.progress >= d.n) { m.done = true; m.fresh = true; earned += d.reward; }
+    }
+    store.set('missions', save.missions);
+    return earned;
   }
 
   // ---------------------------------------------------------------------------
@@ -445,6 +580,11 @@
   let uiShake = 0;
   let time = 0;
   let firstPipes = 0;
+  let mode = 'classic';       // classic | daily
+  let nearCount = 0;
+  let petalFreeScore = 0;     // score reached before the first petal of the run
+  let caught = 0;             // petals caught (not close-call bonuses)
+  let missionPetals = 0;      // petals earned from missions this run
 
   for (let i = 0; i < 14; i++) floaters.push(newFloater(true));
   function newFloater(anywhere) {
@@ -477,6 +617,17 @@
     speed = tier(0).speed;
     scorePop = 0;
     firstPipes = 0;
+    nearCount = 0;
+    petalFreeScore = 0;
+    caught = 0;
+    missionPetals = 0;
+    ensureMissions();
+    if (mode === 'daily') {
+      refreshDaily();
+      rng = mulberry32(seedFor(save.daily.date));
+    } else {
+      rng = Math.random;
+    }
   }
 
   function setState(s) { state = s; stateT = 0; }
@@ -502,15 +653,16 @@
     const minC = 60 + topInset + gap / 2;
     const maxC = groundY() - 60 - gap / 2;
     const mid = (minC + maxC) / 2;
-    let c = firstPipes < 3 ? mid + rand(-t.shift, t.shift) * 0.5 : rand(minC, maxC);
+    let c = firstPipes < 3 ? mid + srand(-t.shift, t.shift) * 0.5 : srand(minC, maxC);
     const prev = pipes[pipes.length - 1];
     if (prev) c = clamp(c, prev.gapY - t.shift, prev.gapY + t.shift);
     c = clamp(c, minC, maxC);
     firstPipes++;
-    const hasPetal = Math.random() < 0.55;
+    const hasPetal = rng() < 0.55;
+    const pdx = COL_W / 2 + srand(75, SPACING - 80), pdy = srand(-gap * 0.3, gap * 0.3);
     pipes.push({
-      x, gapY: c, gap, passed: false,
-      petal: hasPetal ? { dx: COL_W / 2 + rand(75, SPACING - 80), y: c + rand(-gap * 0.3, gap * 0.3), taken: false, bob: rand(0, 6) } : null,
+      x, gapY: c, gap, passed: false, minClear: Infinity,
+      petal: hasPetal ? { dx: pdx, y: c + pdy, taken: false, bob: rand(0, 6) } : null,
       sway: rand(0, Math.PI * 2),
     });
   }
@@ -548,8 +700,28 @@
   function endRun() {
     save.played++;
     store.set('played', save.played);
-    if (score > save.best) { save.best = score; newBest = true; store.set('best', save.best); }
-    save.petals += runPetals;
+    if (mode === 'daily') {
+      refreshDaily();
+      const d = save.daily;
+      const today = dateKey();
+      if (d.lastDate !== today) {
+        const y = new Date(); y.setDate(y.getDate() - 1);
+        d.streak = d.lastDate === dateKey(y) ? d.streak + 1 : 1;
+        d.lastDate = today;
+      }
+      d.runs++;
+      if (score > d.best) { d.best = score; newBest = true; }
+      store.set('daily', d);
+    } else if (score > save.best) {
+      save.best = score; newBest = true; store.set('best', save.best);
+    }
+    if (caught === 0) petalFreeScore = score;
+    const t = save.totals;
+    t.splats++; t.runs++; t.petals += caught; t.near += nearCount; t.score += score;
+    store.set('totals', t);
+    missionPetals = applyMissions({ score, petals: caught, near: nearCount, petalFreeScore, daily: mode === 'daily' });
+    if (missionPetals > 0) { setTimeout(() => { sfx.mission(); haptic('click'); }, 350); }
+    save.petals += runPetals + missionPetals;
     store.set('petals', save.petals);
   }
 
@@ -579,6 +751,25 @@
       }
     }
     return null;
+  }
+
+  function rectDist(cx, cy, rx, ry, rw, rh) {
+    const dx = cx - clamp(cx, rx, rx + rw), dy = cy - clamp(cy, ry, ry + rh);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  // Smallest gap between Mochi's hitbox and a column (negative = touching).
+  function clearance(p, hr) {
+    const cx = p.x + COL_W / 2;
+    const tTop = p.gapY - p.gap / 2, tBot = p.gapY + p.gap / 2;
+    let c = Math.min(
+      rectDist(mochi.x, mochi.y, cx - STICK_W / 2, -200, STICK_W, tTop + 200),
+      rectDist(mochi.x, mochi.y, cx - STICK_W / 2, tBot, STICK_W, groundY() - tBot)) - hr;
+    for (const top of [true, false]) {
+      for (const by of ballCenters(p, top)) {
+        c = Math.min(c, Math.hypot(mochi.x - cx, mochi.y - by) - hr - DANGO_R * 0.94);
+      }
+    }
+    return c;
   }
 
   // ---------------------------------------------------------------------------
@@ -624,7 +815,7 @@
 
     if (state === 'title') {
       mochi.x = W / 2;
-      mochi.y = 285 + Math.sin(time * 3) * 6;
+      mochi.y = 240 + titleY() + Math.sin(time * 3) * 6;
       if (Math.sin(time * 3) > 0.995 && mochi.spinV === 0) mochi.spinV = 18;
     } else if (state === 'ready') {
       mochi.x = W * 0.3;
@@ -645,6 +836,9 @@
 
       const hr = mochi.r * 0.82;
       for (const p of pipes) {
+        if (!p.passed && Math.abs(mochi.x - (p.x + COL_W / 2)) < DANGO_R + mochi.r) {
+          p.minClear = Math.min(p.minClear, clearance(p, hr));
+        }
         const hit = hitColumn(p, hr);
         if (hit) {
           // stick to the side of the dango we hit
@@ -657,6 +851,16 @@
         if (!p.passed && p.x + COL_W < mochi.x) {
           p.passed = true;
           score++;
+          if (caught === 0) petalFreeScore = score;
+          if (p.minClear < 7) {
+            // scraped past a skewer: reward the risk
+            nearCount++;
+            runPetals++;
+            sfx.close();
+            haptic('tick');
+            popups.push({ x: mochi.x + 10, y: mochi.y - 30, text: 'Close! +1', life: 0.9, size: 17, color: '#fff3a0' });
+            for (let i = 0; i < 6; i++) spawnParticle(mochi.x, mochi.y, rand(-80, 80), rand(-160, -40), 0.5, rand(3, 5), '#fff3a0', 'star');
+          }
           scorePop = 1;
           mochi.perk = 1;
           mochi.happy = 0.3;
@@ -676,6 +880,7 @@
           if (dx * dx + dy * dy < (mochi.r + 14) ** 2) {
             p.petal.taken = true;
             runPetals++;
+            caught++;
             sfx.petal();
             popups.push({ x: px, y: py, text: '+1', life: 0.8, size: 18, color: '#ffb3cc' });
             for (let i = 0; i < 8; i++) spawnParticle(px, py, rand(-120, 120), rand(-160, 60), 0.6, rand(3, 5), '#ff9ec0', 'petal');
@@ -1208,50 +1413,88 @@
     }
   }
 
+  const titleY = () => Math.max(0, topInset - 16);
+
+  function drawMissions(x, y, w, compact) {
+    const rowH = 26;
+    const h = rowH * save.missions.length + 34;
+    ctx.fillStyle = 'rgba(58,42,63,0.55)';
+    roundRect(x, y, w, h, 14); ctx.fill();
+    text('MISSIONS', x + 12, y + 14, 12, '#ffe3ee', 'left', null);
+    save.missions.forEach((m, i) => {
+      const d = missionDef(m.id);
+      const ry = y + 36 + i * rowH;
+      // tick box
+      ctx.fillStyle = m.done ? '#7be0a0' : 'rgba(255,255,255,0.25)';
+      ctx.beginPath(); ctx.arc(x + 20, ry, 8, 0, Math.PI * 2); ctx.fill();
+      if (m.done) {
+        ctx.strokeStyle = '#1f5c3a'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x + 16, ry); ctx.lineTo(x + 19, ry + 3); ctx.lineTo(x + 24, ry - 3); ctx.stroke();
+      }
+      ctx.globalAlpha = (m.done && !compact) ? 1 : (m.done ? 0.6 : 1);
+      text(missionText(d), x + 34, ry + 1, 13, '#fff', 'left', null);
+      const right = m.done ? `+${d.reward}` : `${m.progress}/${d.n}`;
+      text(right, x + w - 30, ry + 1, 13, m.done ? '#ffe36e' : '#ffd3e2', 'right', null);
+      drawSakura(x + w - 16, ry, 6, 0);
+      ctx.globalAlpha = 1;
+    });
+    return h;
+  }
+
   function drawTitle() {
     const cx = W / 2;
     const skin = SKINS[skinIndex];
     const unlocked = save.unlocked.includes(skin.id);
-    const ty = Math.max(0, topInset - 20);
+    const ty = titleY();
 
     const bob = Math.sin(time * 2) * 3;
-    text('Mochi', cx, 120 + ty + bob, 64, '#fff8f0', 'center', '#3a2a3f');
-    text('HOP', cx, 178 + ty + bob, 46, '#ff8fb3', 'center', '#3a2a3f');
+    text('Mochi', cx, 96 + ty + bob, 56, '#fff8f0', 'center', '#3a2a3f');
+    text('HOP', cx, 144 + ty + bob, 40, '#ff8fb3', 'center', '#3a2a3f');
 
     const sh = uiShake > 0 ? Math.sin(uiShake * 40) * 6 * uiShake : 0;
     ctx.globalAlpha = unlocked ? 1 : 0.55;
-    drawMochi(cx + sh, mochi.y, 2.4, skin, mochiOpts({ rot: 0, vy: 0, dead: false, hopping: false }));
+    drawMochi(cx + sh, mochi.y, 1.9, skin, mochiOpts({ rot: 0, vy: 0, dead: false, hopping: false }));
     ctx.globalAlpha = 1;
     if (!unlocked) {
-      const lx = cx + 40, ly = mochi.y + 28;
+      const lx = cx + 36, ly = mochi.y + 24;
       ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(lx, ly, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(lx, ly, 18, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
       ctx.fillStyle = '#3a2a3f';
-      roundRect(lx - 9, ly - 3, 18, 14, 3); ctx.fill();
-      ctx.beginPath(); ctx.arc(lx, ly - 3, 5.5, Math.PI, 0); ctx.stroke();
+      roundRect(lx - 8, ly - 3, 16, 13, 3); ctx.fill();
+      ctx.beginPath(); ctx.arc(lx, ly - 3, 5, Math.PI, 0); ctx.stroke();
     }
 
-    const ax = Math.min(120, W / 2 - 34);
-    arrowButton('left', cx - ax, 285, -1);
-    arrowButton('right', cx + ax, 285, 1);
+    const ax = Math.min(115, W / 2 - 34);
+    arrowButton('left', cx - ax, 240 + ty, -1);
+    arrowButton('right', cx + ax, 240 + ty, 1);
 
-    text(skin.name, cx, 358, 28, '#fff');
+    text(skin.name, cx, 300 + ty, 24, '#fff');
     for (let i = 0; i < SKINS.length; i++) {
       ctx.fillStyle = i === skinIndex ? '#fff' : 'rgba(255,255,255,0.45)';
-      ctx.beginPath(); ctx.arc(cx + (i - (SKINS.length - 1) / 2) * 16, 386, i === skinIndex ? 5 : 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + (i - (SKINS.length - 1) / 2) * 16, 322 + ty, i === skinIndex ? 5 : 4, 0, Math.PI * 2); ctx.fill();
     }
 
     if (unlocked) {
-      button('play', cx, 446, 180, 60, 'PLAY', '#ff7aa2');
+      button('play', cx, 366 + ty, 180, 52, 'PLAY', '#ff7aa2');
     } else {
       const can = save.petals >= skin.cost;
-      button('play', cx, 446, 200, 60, `UNLOCK ${skin.cost}`, '#ffb347', can);
-      if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 496, 15, '#fff');
+      button('play', cx, 366 + ty, 200, 52, `UNLOCK ${skin.cost}`, '#ffb347', can);
+      if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 340 + ty, 13, '#fff');
     }
 
-    text(`BEST ${save.best}`, cx, 532, 20, '#fff');
+    refreshDaily();
+    const d = save.daily;
+    button('daily', cx, 426 + ty, 180, 44, 'DAILY', '#9b7bff', unlocked);
+    const dailyInfo = d.runs > 0 ? `Today's best ${d.best}` : `New skewers for ${prettyDate(d.date)}`;
+    text(d.streak > 0 ? `${dailyInfo} · ${d.streak} day streak` : dailyInfo, cx, 459 + ty, 12, '#fff');
+
+    ensureMissions();
+    const mw = Math.min(300, W - 24);
+    drawMissions(cx - mw / 2, 476 + ty, mw, true);
+
     petalCounter(26, 36 + topInset, save.petals);
+    text(`BEST ${save.best}`, W / 2, 37 + topInset, 17, '#fff');
     settingsButtons();
   }
 
@@ -1286,19 +1529,43 @@
     const t = clamp(stateT / 0.22, 0, 1);
     const ease = 1 - Math.pow(1 - t, 3);
     const dy = (1 - ease) * 40;
-    ctx.fillStyle = `rgba(29,27,47,${0.28 * ease})`;
+    ctx.fillStyle = `rgba(29,27,47,${0.32 * ease})`;
     ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = ease;
 
-    const pw = Math.min(280, W - 40), ph = 130;
-    const px = cx - pw / 2, py = 150 + topInset * 0.6 + dy;
+    const pw = Math.min(290, W - 30), ph = 130;
+    const px = cx - pw / 2, py = 104 + topInset * 0.7 + dy;
+    if (mode === 'daily') text(`DAILY · ${prettyDate(save.daily.date)}`, cx, py - 18, 15, '#e3d6ff');
+    drawScoreCard(px, py, pw, ph);
+
+    let ly = py + ph + 28;
+    petalCounter(px + 12, ly, `+${runPetals + missionPetals}  (${save.petals})`);
+    if (nearCount > 0) text(`${nearCount} close call${nearCount > 1 ? 's' : ''}`, px + pw - 6, ly + 1, 15, '#fff3a0', 'right');
+
+    drawMissions(px, ly + 20, pw, false);
+
+    const pulse = 1 + Math.sin(time * 6) * 0.05;
+    ctx.save();
+    ctx.translate(cx, ly + 158);
+    ctx.scale(pulse, pulse);
+    text('Tap to retry', 0, 0, 26, '#fff');
+    ctx.restore();
+
+    const by = groundY() - 34;
+    button('share', cx - 68, by, 124, 44, 'SHARE', '#ff9f43');
+    button('skins', cx + 68, by, 124, 44, 'MENU', '#7ac7ff');
+    ctx.globalAlpha = 1;
+    settingsButtons();
+  }
+
+  function drawScoreCard(px, py, pw, ph) {
+    const best = mode === 'daily' ? save.daily.best : save.best;
     ctx.fillStyle = 'rgba(58,42,63,0.9)';
     roundRect(px, py + 6, pw, ph, 20); ctx.fill();
     ctx.fillStyle = '#fff6ea';
     roundRect(px, py, pw, ph, 20); ctx.fill();
     ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
 
-    // medal
     const m = medalFor(score);
     const mx = px + 58, my = py + ph / 2 - 6;
     ctx.fillStyle = 'rgba(0,0,0,0.08)';
@@ -1319,8 +1586,8 @@
     const rx = px + pw - 22;
     text('SCORE', rx, py + 24, 13, '#b06b85', 'right', null);
     text(String(score), rx, py + 50, 30, '#fff', 'right');
-    text('BEST', rx, py + 80, 13, '#b06b85', 'right', null);
-    text(String(save.best), rx, py + 104, 26, '#fff', 'right');
+    text(mode === 'daily' ? 'TODAY' : 'BEST', rx, py + 80, 13, '#b06b85', 'right', null);
+    text(String(best), rx, py + 104, 26, '#fff', 'right');
     if (newBest) {
       ctx.save();
       ctx.translate(rx - 74, py + 102);
@@ -1330,19 +1597,80 @@
       text('NEW!', 0, 1, 13, '#fff', 'center', null);
       ctx.restore();
     }
+  }
 
-    petalCounter(cx - 50, py + ph + 34, `+${runPetals}  (${save.petals})`);
+  // ---------------------------------------------------------------------------
+  // Share card: a 1080x1350 image of Mochi splatted on a dango, with the score
+  // ---------------------------------------------------------------------------
+  function makeShareCanvas() {
+    const CW = 360, CH = 450, k = 3;
+    const cv = document.createElement('canvas');
+    cv.width = CW * k; cv.height = CH * k;
+    const prev = ctx;
+    ctx = cv.getContext('2d');
+    ctx.scale(k, k);
+    try {
+      const sky = skyAt(score);
+      const g = ctx.createLinearGradient(0, 0, 0, CH);
+      g.addColorStop(0, sky.top); g.addColorStop(1, sky.bot);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, CW, CH);
+      for (let i = 0; i < 18; i++) drawPetal((i * 97) % CW, (i * 61) % 300 + 20, 4 + (i % 3), i, 'rgba(255,183,206,0.8)');
 
-    const pulse = 1 + Math.sin(time * 6) * 0.05;
-    ctx.save();
-    ctx.translate(cx, py + ph + 86);
-    ctx.scale(pulse, pulse);
-    text('Tap to retry', 0, 0, 26, '#fff');
-    ctx.restore();
+      // sand
+      ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, CH - 66, CW, 6);
+      ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, CH - 60, CW, 60);
 
-    button('skins', cx, groundY() - 44, 132, 44, 'FRIENDS', '#7ac7ff');
-    ctx.globalAlpha = 1;
-    settingsButtons();
+      text('Mochi', CW / 2, 50, 44, '#fff8f0');
+      text('HOP', CW / 2, 88, 30, '#ff8fb3');
+
+      // a skewer with Mochi stuck to it
+      const sx = 238, tipY = 170;
+      drawStick(sx, tipY, CH - 52, false);
+      for (let i = 2; i >= 0; i--) drawBall(i, sx, tipY + TIP + DANGO_R - 4 + i * DANGO_STEP);
+      drawMochi(sx - DANGO_R - 10, 232, 1.9, SKINS[skinIndex], { dead: true, sx: 0.66, sy: 1.3, spin: 0 });
+
+      // score bubble
+      ctx.fillStyle = 'rgba(58,42,63,0.9)';
+      roundRect(24, 142, 150, 120, 20); ctx.fill();
+      ctx.fillStyle = '#fff6ea';
+      roundRect(24, 136, 150, 120, 20); ctx.fill();
+      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
+      text(mode === 'daily' ? `DAILY ${prettyDate(save.daily.date).toUpperCase()}` : 'I SCORED', 99, 158, 13, '#b06b85', 'center', null);
+      text(String(score), 99, 200, 52, '#fff');
+      const m = medalFor(score);
+      text(m ? `${m.name} MEDAL` : `${runPetals} petal${runPetals === 1 ? '' : 's'}`, 99, 238, 13, m ? m.c2 : '#b06b85', 'center', null);
+
+      text('Can you beat me?', CW / 2, 352, 24, '#fff');
+      text("Don't get skewered!", CW / 2, 378, 14, '#ffe3ee');
+      text('Play Mochi Hop', CW / 2, CH - 28, 18, '#ff8fb3');
+    } finally {
+      ctx = prev;
+    }
+    return cv;
+  }
+
+  function shareScore() {
+    const cv = makeShareCanvas();
+    const msg = mode === 'daily'
+      ? `I scored ${score} on the Mochi Hop daily challenge (${prettyDate(save.daily.date)})! Can you beat me?`
+      : `I scored ${score} in Mochi Hop! Can you beat me?`;
+    const dataUrl = cv.toDataURL('image/png');
+    try {
+      if (native && native.shareImage) { native.shareImage(dataUrl.split(',')[1], msg); return; }
+    } catch (e) { /* fall through */ }
+    cv.toBlob(async (blob) => {
+      try {
+        const file = new File([blob], 'mochi-hop.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], text: msg });
+          return;
+        }
+      } catch (e) { /* fall through to download */ }
+      const a = document.createElement('a');
+      a.href = dataUrl; a.download = 'mochi-hop.png';
+      a.click();
+    });
   }
 
   function drawHud() {
@@ -1353,6 +1681,7 @@
     text(String(score), 0, 0, 56, '#fff');
     ctx.restore();
     if (runPetals > 0) petalCounter(26, 36 + topInset, runPetals);
+    if (mode === 'daily') text('DAILY', W / 2, 112 + topInset, 13, '#e3d6ff');
   }
 
   function draw() {
@@ -1431,6 +1760,14 @@
       if (hitTest('left', x, y)) return changeSkin(-1);
       if (hitTest('right', x, y)) return changeSkin(1);
       const skin = SKINS[skinIndex];
+      if (hitTest('daily', x, y)) {
+        if (!save.unlocked.includes(skin.id)) { uiShake = 1; sfx.nope(); return; }
+        mode = 'daily';
+        resetRun();
+        sfx.click();
+        setState('ready');
+        return;
+      }
       if (!save.unlocked.includes(skin.id)) {
         if (hitTest('play', x, y)) {
           if (save.petals >= skin.cost) {
@@ -1451,6 +1788,7 @@
         }
         return;
       }
+      mode = 'classic';
       resetRun();
       sfx.click();
       // Returning players skip the "Get Ready" hint.
@@ -1461,7 +1799,8 @@
     } else if (state === 'play') {
       hop();
     } else if (state === 'over') {
-      if (hitTest('skins', x, y)) { sfx.click(); setState('title'); return; }
+      if (hitTest('skins', x, y)) { sfx.click(); ensureMissions(); setState('title'); return; }
+      if (hitTest('share', x, y)) { sfx.click(); shareScore(); return; }
       retry();
     }
   }
@@ -1525,5 +1864,6 @@
   window.__mochi = {
     get state() { return state; }, get score() { return score; }, get W() { return W; },
     mochi, pipes: () => pipes, save, ballCenters, COL_W, DANGO_R,
+    get mode() { return mode; }, get near() { return nearCount; }, makeShareCanvas,
   };
 })();

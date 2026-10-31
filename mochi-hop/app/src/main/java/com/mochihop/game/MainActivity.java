@@ -3,10 +3,13 @@ package com.mochihop.game;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
+import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.DisplayCutout;
@@ -18,6 +21,11 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
+
+import androidx.core.content.FileProvider;
+
+import java.io.File;
+import java.io.FileOutputStream;
 
 /**
  * Hosts the canvas game (assets/game) full screen in a WebView.
@@ -131,7 +139,10 @@ public class MainActivity extends Activity {
         private SharedPreferences prefs;
         volatile float safeTopDp = 0f;
 
-        void init(Context ctx) {
+        private Activity activity;
+
+        void init(Activity ctx) {
+            activity = ctx;
             vibrator = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
             prefs = ctx.getSharedPreferences("mochihop", Context.MODE_PRIVATE);
         }
@@ -162,6 +173,31 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setItem(String key, String value) {
             prefs.edit().putString(key, value).apply();
+        }
+
+        /** Opens the Android share sheet with the score card image. */
+        @JavascriptInterface
+        public void shareImage(String base64Png, String message) {
+            final Activity a = activity;
+            if (a == null) return;
+            try {
+                byte[] png = Base64.decode(base64Png, Base64.DEFAULT);
+                File dir = new File(a.getCacheDir(), "share");
+                if (!dir.exists() && !dir.mkdirs()) return;
+                File file = new File(dir, "mochi-hop-score.png");
+                try (FileOutputStream out = new FileOutputStream(file)) {
+                    out.write(png);
+                }
+                Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".share", file);
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setType("image/png");
+                send.putExtra(Intent.EXTRA_STREAM, uri);
+                send.putExtra(Intent.EXTRA_TEXT, message);
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                a.runOnUiThread(() -> a.startActivity(Intent.createChooser(send, "Share your score")));
+            } catch (Exception ignored) {
+                // Sharing is best-effort; never crash the game over it.
+            }
         }
 
         /** Height of the camera cutout area at the top of the screen, in CSS pixels. */

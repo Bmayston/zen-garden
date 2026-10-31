@@ -27,6 +27,14 @@ mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its 
   | Matcha | 60 | tea whisk |
   | Ube | 120 | bow |
   | Golden | 250 | crown |
+- **Close calls:** scrape past a skewer tip and you get a "Close! +1" sparkle, a petal
+  and a little haptic tick.
+- **Daily challenge:** the same seeded skewer layout for everyone each day, with today's
+  best score and a day streak.
+- **Missions:** three goals at a time (such as "3 close calls in one run" or "Score 10
+  without a petal") that pay out petals and are replaced once completed.
+- **Share card:** one tap on the game-over screen makes a 1080×1350 image of Mochi
+  splatted on a dango with your score and medal, then opens the Android share sheet.
 - **Difficulty in clear steps:** very gentle for the first 3 gaps, then harder at 3, 10,
   25 and 50 points.
 - **Sound:** a signature hop "boing", a score chime that climbs the scale with each gap,
@@ -71,6 +79,8 @@ cd mochi-hop
 ```
 
 ## Publishing to Google Play
+
+See [RELEASING.md](RELEASING.md) for signing and Play Console steps. In short:
 
 1. Create an upload keystore and add a `signingConfigs` block for `release` in `app/build.gradle.kts`.
 2. Run `./gradlew bundleRelease` to produce an `.aab`.
