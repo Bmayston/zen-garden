@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mochi: round rice-cake body, leaf sprout, big eyes, rosy cheeks. 108dp adaptive canvas, art kept in the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- sprout stem -->
+    <path android:strokeColor="#3D8A34" android:strokeWidth="2.4" android:strokeLineCap="round"
+        android:pathData="M54,38 Q55,33 54,29" />
+    <!-- leaves -->
+    <path android:fillColor="#5CBF4A" android:pathData="M54,29 Q48,20 38,25 Q46,31 54,29 Z" />
+    <path android:fillColor="#4AA83C" android:pathData="M54,29 Q60,20 70,25 Q62,31 54,29 Z" />
+    <!-- body shade + body -->
+    <path android:fillColor="#EFD9C6" android:pathData="M28,60 a26,22 0 1,0 52,0 a26,22 0 1,0 -52,0 Z" />
+    <path android:fillColor="#FFF8F0" android:strokeColor="#5A3A48" android:strokeWidth="1.6"
+        android:pathData="M28,58.5 a26,21.5 0 1,0 52,0 a26,21.5 0 1,0 -52,0 Z" />
+    <!-- highlight -->
+    <path android:fillColor="#FFFFFF" android:pathData="M37,48 a6,3.2 0 1,0 12,0 a6,3.2 0 1,0 -12,0 Z" />
+    <!-- cheeks -->
+    <path android:fillColor="#FFB0C0" android:pathData="M35,63 a4.5,2.8 0 1,0 9,0 a4.5,2.8 0 1,0 -9,0 Z" />
+    <path android:fillColor="#FFB0C0" android:pathData="M64,63 a4.5,2.8 0 1,0 9,0 a4.5,2.8 0 1,0 -9,0 Z" />
+    <!-- eyes -->
+    <path android:fillColor="#2B1D2E" android:pathData="M42.5,57 a3.5,4.6 0 1,0 7,0 a3.5,4.6 0 1,0 -7,0 Z" />
+    <path android:fillColor="#2B1D2E" android:pathData="M58.5,57 a3.5,4.6 0 1,0 7,0 a3.5,4.6 0 1,0 -7,0 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M46,55 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M62,55 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0 Z" />
+    <!-- cat mouth -->
+    <path android:strokeColor="#2B1D2E" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M50,63.5 Q52,66.5 54,63.8 Q56,66.5 58,63.5" />
+</vector>
