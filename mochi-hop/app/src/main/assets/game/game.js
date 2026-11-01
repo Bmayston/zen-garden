@@ -307,6 +307,23 @@
   }
   // Public web version of the game (GitHub Pages). Shared links open here, so a
   // friend can play instantly in the browser with no install.
+  // Brand logo (cut out from the artwork, see tools/), drawn on the title, share card and previews.
+  const logoImg = new Image();
+  let logoReady = false;
+  logoImg.onload = () => { logoReady = true; };
+  logoImg.src = window.MOCHI_LOGO || '';
+  if (document.fonts) { document.fonts.load('700 20px Fredoka'); document.fonts.load('600 20px Fredoka'); }
+  const LOGO_ASPECT = 687 / 800;
+  function drawLogo(cx, top, w) {
+    if (logoReady) { ctx.drawImage(logoImg, cx - w / 2, top, w, w * LOGO_ASPECT); return; }
+    text('Mochi', cx, top + w * 0.36, w * 0.24, '#feedde');
+    text('HOP', cx, top + w * 0.6, w * 0.2, '#fd64a6');
+  }
+  window.mochiAssetsReady = () => Promise.all([
+    document.fonts ? document.fonts.load('700 20px Fredoka') : null,
+    logoReady ? null : new Promise(res => { logoImg.addEventListener('load', res); logoImg.addEventListener('error', res); }),
+  ]);
+
   const SHARE_URL = 'https://bmayston.github.io/zen-garden/play/';
   // Fill in once the game is on Google Play; the web version then shows a "Get it on Google Play" button.
   const PLAY_STORE_URL = '';
@@ -555,8 +572,11 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
-  function text(str, x, y, size, color = '#fff', align = 'center', outline = '#3a2a3f') {
-    ctx.font = `900 ${size}px "Trebuchet MS", "Arial Rounded MT Bold", Verdana, sans-serif`;
+  // Brand: Fredoka (bundled in fonts/) with the logo's dark plum outline.
+  const FONT = '"Fredoka", "Trebuchet MS", "Arial Rounded MT Bold", Verdana, sans-serif';
+  const PLUM = '#2e0b20';
+  function text(str, x, y, size, color = '#fff', align = 'center', outline = PLUM) {
+    ctx.font = `${outline ? 700 : 600} ${size}px ${FONT}`;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -1049,8 +1069,9 @@
 
     if (state === 'title') {
       mochi.x = W / 2;
-      mochi.y = 254 + titleY() + Math.sin(time * 3) * 6;
+      mochi.y = 312 + titleY() + Math.sin(time * 3) * 5;
       if (Math.sin(time * 3) > 0.995 && mochi.spinV === 0) mochi.spinV = 18;
+      if (mochi.happy <= 0 && Math.random() < dt * 0.2) mochi.happy = 0.7;   // the odd cheeky wink
     } else if (state === 'ready') {
       mochi.x = W * 0.3;
       mochi.y = H * 0.42 + Math.sin(time * 4) * 7;
@@ -1420,25 +1441,33 @@
     const c = Math.cos(o.spin || 0);
     ctx.save();
     ctx.translate(0, top + 3);
-    ctx.strokeStyle = '#3d8a34';
-    ctx.lineWidth = 2.4;
     ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(1.5, -5, 0, -10); ctx.stroke();
+    ctx.lineJoin = 'round';
+    // stem: plum outline under a green core
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 4.2;
+    ctx.beginPath(); ctx.moveTo(0, 1); ctx.quadraticCurveTo(1.5, -5, 0, -10); ctx.stroke();
+    ctx.strokeStyle = '#5fad0f'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(0, 1); ctx.quadraticCurveTo(1.5, -5, 0, -10); ctx.stroke();
     ctx.translate(0, -10);
     for (const s of [1, -1]) {
       const proj = s * c;                       // projected blade direction (fake 3D spin)
+      const front = proj * s > 0;
       ctx.save();
       ctx.scale(proj, 1);
       ctx.rotate(-lift);
-      ctx.fillStyle = proj * s > 0 ? (s > 0 ? '#4aa83c' : '#5cbf4a') : '#3a8a30';
+      // broad rounded leaf
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(7, -10, 19, -4);
-      ctx.quadraticCurveTo(9, 4, 0, 0);
+      ctx.bezierCurveTo(3, -11, 15, -12, 19, -5);
+      ctx.bezierCurveTo(15, 3, 5, 4, 0, 0);
+      ctx.fillStyle = front ? '#6cc21d' : '#4f9410';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(30,90,30,0.5)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(1, -0.5); ctx.quadraticCurveTo(9, -4, 16, -3.5); ctx.stroke();
+      ctx.strokeStyle = PLUM; ctx.lineWidth = 1.4; ctx.stroke();
+      // highlight + vein
+      ctx.fillStyle = 'rgba(200,255,140,0.55)';
+      ctx.beginPath(); ctx.ellipse(8, -6, 5, 2, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(46,11,32,0.35)'; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.moveTo(1, -0.5); ctx.quadraticCurveTo(9, -4, 16, -4); ctx.stroke();
       ctx.restore();
     }
     ctx.restore();
@@ -1453,8 +1482,10 @@
     ctx.rotate(o.rot || 0);
 
     // soft shadow
-    ctx.fillStyle = 'rgba(40,20,40,0.15)';
-    ctx.beginPath(); ctx.ellipse(1.5, r * 0.95 * sy, r * 0.9 * sx, r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+    if (!o.noShadow) {
+      ctx.fillStyle = 'rgba(40,20,40,0.15)';
+      ctx.beginPath(); ctx.ellipse(1.5, r * 0.95 * sy, r * 0.9 * sx, r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+    }
 
     ctx.save();
     ctx.scale(sx, sy);
@@ -1468,24 +1499,25 @@
     ctx.beginPath(); ctx.ellipse(0, 1.5, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = skin.body;
     ctx.beginPath(); ctx.ellipse(0, -0.5, rx * 0.97, ry * 0.94, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(80,50,60,0.55)';
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = PLUM;
+    ctx.lineWidth = 1.9;
     ctx.beginPath(); ctx.ellipse(0, 0.5, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.beginPath(); ctx.ellipse(-r * 0.5, -r * 0.5, r * 0.28, r * 0.15, -0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.ellipse(-r * 0.5, -r * 0.48, r * 0.3, r * 0.16, -0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-r * 0.18, -r * 0.66, r * 0.06, 0, Math.PI * 2); ctx.fill();
 
     if (skin.pattern) drawPattern(skin, r, rx, ry);
     drawAccessory(skin.acc, r, top);
 
     // cheeks
     ctx.fillStyle = skin.cheek;
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath(); ctx.ellipse(-r * 0.62, r * 0.2, r * 0.2, r * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(r * 0.62, r * 0.2, r * 0.2, r * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.ellipse(-r * 0.62, r * 0.18, r * 0.22, r * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r * 0.62, r * 0.18, r * 0.22, r * 0.13, 0, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
 
     // eyes (pupils glance up when rising, down when falling)
-    const eyeC = skin.eye || '#2b1d2e';
+    const eyeC = skin.eye || '#1a0510';
     const ex = r * 0.36, ey = -r * 0.06;
     const look = clamp((o.vy || 0) / 400, -1, 1) * 1.4;
     ctx.strokeStyle = eyeC;
@@ -1504,18 +1536,24 @@
         ctx.stroke();
       }
     } else if (o.happy) {
-      for (const s of [-1, 1]) {
-        ctx.beginPath(); ctx.arc(s * ex, ey + 2, 3.6, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
-      }
+      // the logo's wink: left eye open and sparkly, right eye a cheeky "<"
+      ctx.beginPath(); ctx.ellipse(-ex, ey, 3.6, 4.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = skin.eye ? '#1a0510' : '#fff';
+      ctx.beginPath(); ctx.arc(-ex + 1.2, ey - 1.7, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-ex - 1.2, ey + 1.6, 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = eyeC;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(ex + 3.6, ey - 3); ctx.lineTo(ex - 2.4, ey); ctx.lineTo(ex + 3.6, ey + 3); ctx.stroke();
     } else if (o.blink) {
       for (const s of [-1, 1]) {
         ctx.beginPath(); ctx.moveTo(s * ex - 3.5, ey); ctx.lineTo(s * ex + 3.5, ey); ctx.stroke();
       }
     } else {
       for (const s of [-1, 1]) {
-        ctx.beginPath(); ctx.ellipse(s * ex, ey + look * 0.4, 3.2, 4.2, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = skin.eye ? '#2b1d2e' : '#fff';
-        ctx.beginPath(); ctx.arc(s * ex + 1.1, ey - 1.6 + look * 0.4, 1.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(s * ex, ey + look * 0.4, 3.6, 4.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = skin.eye ? '#1a0510' : '#fff';
+        ctx.beginPath(); ctx.arc(s * ex + 1.2, ey - 1.7 + look * 0.4, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(s * ex - 1.2, ey + 1.6 + look * 0.4, 0.7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = eyeC;
       }
     }
@@ -1529,14 +1567,22 @@
       ctx.ellipse(0, r * 0.34, 2.4, 2.9, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-    } else if (o.hopping) {
-      ctx.fillStyle = '#c94a6a';
-      ctx.ellipse(0, r * 0.3, 3, 3.6, 0, 0, Math.PI * 2);
-      ctx.fill();
     } else {
-      ctx.moveTo(-3.6, r * 0.24);
-      ctx.quadraticCurveTo(-1.8, r * 0.42, 0, r * 0.26);
-      ctx.quadraticCurveTo(1.8, r * 0.42, 3.6, r * 0.24);
+      // open smile: little cat-lip on top, round open mouth below (wider mid-hop)
+      const open = o.hopping ? 1.3 : (o.happy ? 1.12 : 1);
+      const my = r * 0.2, mw = 4.6, md = 5.2 * open;
+      ctx.beginPath();
+      ctx.moveTo(-mw, my);
+      ctx.quadraticCurveTo(0, my + 1.1, mw, my);           // gently smiling top edge
+      ctx.bezierCurveTo(mw * 0.95, my + md, -mw * 0.95, my + md, -mw, my);
+      ctx.closePath();
+      ctx.fillStyle = '#5a0f2c';
+      ctx.fill();
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = '#ff7a9e';
+      ctx.beginPath(); ctx.ellipse(0.4, my + md * 0.82, mw * 0.62, md * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = eyeC; ctx.lineWidth = 1.3;
       ctx.stroke();
     }
 
@@ -1704,11 +1750,11 @@
 
   function button(id, cx, cy, w, h, label, color, enabled = true) {
     ui[id] = { x: cx - w / 2, y: cy - h / 2, w, h };
-    ctx.fillStyle = 'rgba(58,42,63,0.9)';
+    ctx.fillStyle = 'rgba(46,11,32,0.9)';
     roundRect(cx - w / 2, cy - h / 2 + 5, w, h, 16); ctx.fill();
     ctx.fillStyle = enabled ? color : '#b9aebb';
     roundRect(cx - w / 2, cy - h / 2, w, h, 16); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 3; ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     roundRect(cx - w / 2 + 6, cy - h / 2 + 5, w - 12, h * 0.32, 10); ctx.fill();
     text(label, cx, cy + 1, h * 0.42, '#fff');
@@ -1718,8 +1764,8 @@
     ui[id] = { x: cx - 28, y: cy - 28, w: 56, h: 56 };
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath(); ctx.arc(cx, cy, 24, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
-    ctx.fillStyle = '#3a2a3f';
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = PLUM;
     ctx.beginPath();
     ctx.moveTo(cx + dir * 9, cy);
     ctx.lineTo(cx - dir * 6, cy - 10);
@@ -1736,9 +1782,9 @@
     ui[id] = { x: cx - 24, y: cy - 24, w: 48, h: 48 };
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.beginPath(); ctx.arc(cx, cy, 19, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.fillStyle = '#3a2a3f';
-    ctx.strokeStyle = '#3a2a3f';
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = PLUM;
+    ctx.strokeStyle = PLUM;
   }
 
   function settingsButtons() {
@@ -1832,7 +1878,7 @@
   function drawMissions(x, y, w, compact, live = false, list = save.missions, title = 'MISSIONS', note = '') {
     const rowH = 26;
     const h = rowH * list.length + 34;
-    ctx.fillStyle = 'rgba(58,42,63,0.55)';
+    ctx.fillStyle = 'rgba(46,11,32,0.55)';
     roundRect(x, y, w, h, 14); ctx.fill();
     text(title, x + 12, y + 14, 12, '#ffe3ee', 'left', null);
     if (note) text(note, x + w - 12, y + 14, 11, '#d9c3dd', 'right', null);
@@ -1869,42 +1915,40 @@
     const unlocked = save.unlocked.includes(skin.id);
     const ty = titleY();
 
-    const bob = reducedMotion() ? 0 : Math.sin(time * 2) * 3;
-    text('Mochi', cx, 112 + ty + bob, 56, '#fff8f0', 'center', '#3a2a3f');
-    text('HOP', cx, 158 + ty + bob, 40, '#ff8fb3', 'center', '#3a2a3f');
+    const breathe = reducedMotion() ? 1 : 1 + Math.sin(time * 2) * 0.012;
+    const lw = Math.min(250, W - 40) * breathe;
+    drawLogo(cx, 48 + ty + (1 - breathe) * 100, lw);
 
     const sh = uiShake > 0 ? Math.sin(uiShake * 40) * 6 * uiShake : 0;
     ctx.globalAlpha = unlocked ? 1 : 0.55;
-    drawMochi(cx + sh, mochi.y, 1.9, skin, mochiOpts({ rot: 0, vy: 0, dead: false, hopping: false, sx: 1, sy: 1 }));
+    drawMochi(cx + sh, mochi.y, 1.45, skin, mochiOpts({ rot: 0, vy: 0, dead: false, hopping: false, sx: 1, sy: 1 }));
     ctx.globalAlpha = 1;
     if (!unlocked) {
-      const lx = cx + 36, ly = mochi.y + 24;
+      const lx = cx + 30, ly = mochi.y + 20;
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(lx, ly, 18, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = '#3a2a3f';
+      ctx.strokeStyle = PLUM; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = PLUM;
       roundRect(lx - 8, ly - 3, 16, 13, 3); ctx.fill();
       ctx.beginPath(); ctx.arc(lx, ly - 3, 5, Math.PI, 0); ctx.stroke();
     }
 
     const ax = Math.min(115, W / 2 - 34);
-    arrowButton('left', cx - ax, 254 + ty, -1);
-    arrowButton('right', cx + ax, 254 + ty, 1);
+    arrowButton('left', cx - ax, 312 + ty, -1);
+    arrowButton('right', cx + ax, 312 + ty, 1);
 
-    text(skin.name, cx, 316 + ty, 24, '#fff');
+    text(skin.name, cx, 358 + ty, 22, '#feedde');
     const owned = SKINS.filter(k => save.unlocked.includes(k.id)).length;
-    text(skin.season ? `Seasonal friend · ${skin.seasonName}` : `${owned}/${SKINS.length} friends`, cx, 340 + ty, 12, skin.season ? '#ffe36e' : '#ffe3ee', 'center', null);
+    let sub = skin.season ? `Seasonal friend · ${skin.seasonName}` : `${owned}/${SKINS.length} friends`;
+    if (!unlocked && inSeason(skin) && save.petals < skin.cost) sub = `Collect ${skin.cost - save.petals} more petals`;
+    text(sub, cx, 379 + ty, 12, skin.season ? '#ffe36e' : '#fff', 'center', 'rgba(46,11,32,0.6)');
 
     if (unlocked) {
-      button('play', cx, 386 + ty, 180, 52, 'PLAY', '#ff7aa2');
+      button('play', cx, 420 + ty, 180, 50, 'PLAY', '#fd64a6');
+    } else if (!inSeason(skin)) {
+      button('play', cx, 420 + ty, 210, 50, `BACK ${skin.seasonName.toUpperCase()}`, '#ffb347', false);
     } else {
-      if (!inSeason(skin)) {
-        button('play', cx, 386 + ty, 210, 52, `BACK ${skin.seasonName.toUpperCase()}`, '#ffb347', false);
-      } else {
-        const can = save.petals >= skin.cost;
-        button('play', cx, 386 + ty, 200, 52, `UNLOCK ${skin.cost}`, '#ffb347', can);
-        if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 356 + ty, 13, '#fff');
-      }
+      button('play', cx, 420 + ty, 200, 50, `UNLOCK ${skin.cost}`, '#ffb347', save.petals >= skin.cost);
     }
 
     refreshDaily();
@@ -1912,27 +1956,27 @@
     if (challenge) {
       // opened from a friend's challenge link
       const pulse = 1 + Math.sin(time * 5) * 0.03;
-      ctx.save(); ctx.translate(cx, 446 + ty); ctx.scale(pulse, pulse);
-      button('daily', 0, 0, 200, 46, `BEAT ${challenge.score}`, '#ffb000', unlocked);
+      ctx.save(); ctx.translate(cx, 476 + ty); ctx.scale(pulse, pulse);
+      button('daily', 0, 0, 200, 44, `BEAT ${challenge.score}`, '#ffb000', unlocked);
       ctx.restore();
-      ui.daily = { x: cx - 100, y: 446 + ty - 23, w: 200, h: 46 };
-      text(challenge.date ? `A friend's score on Daily #${dailyNumber(challenge.date)}` : "A friend's score — can you beat it?", cx, 480 + ty, 12, '#fff');
+      ui.daily = { x: cx - 100, y: 476 + ty - 22, w: 200, h: 44 };
+      text(challenge.date ? `A friend's score on Daily #${dailyNumber(challenge.date)}` : "A friend's score — can you beat it?", cx, 506 + ty, 12, '#fff', 'center', 'rgba(46,11,32,0.6)');
     } else {
-      button('daily', cx, 446 + ty, 180, 46, 'DAILY', '#9b7bff', unlocked);
+      button('daily', cx, 476 + ty, 180, 44, 'DAILY', '#9b7bff', unlocked);
       const dailyInfo = d.runs > 0 ? `Daily #${dailyNumber(d.date)} · best ${d.best}` : `Daily #${dailyNumber(d.date)} · new skewers today`;
-      text(d.streak > 0 ? `${dailyInfo} · ${d.streak} day streak` : dailyInfo, cx, 480 + ty, 12, '#fff');
+      text(d.streak > 0 ? `${dailyInfo} · ${d.streak} day streak` : dailyInfo, cx, 506 + ty, 12, '#fff', 'center', 'rgba(46,11,32,0.6)');
     }
 
-    if (isWeb && PLAY_STORE_URL) pillButton('store', cx, 568 + ty, 210, 'GET IT ON GOOGLE PLAY', 'book', 0);
-    else if (isWeb && installPrompt) pillButton('install', cx, 568 + ty, 170, 'ADD TO HOME', 'book', 0);
+    if (isWeb && PLAY_STORE_URL) pillButton('store', cx, 586 + ty, 210, 'GET IT ON GOOGLE PLAY', 'book', 0);
+    else if (isWeb && installPrompt) pillButton('install', cx, 586 + ty, 170, 'ADD TO HOME', 'book', 0);
 
     // missions toggle
     ensureMissions();
     const done = save.missions.filter(m => m.done).length;
     const fresh = save.missions.filter(m => m.isNew && !m.done).length;
     const pw2 = Math.min(144, W / 2 - 14);
-    pillButton('missions', cx - pw2 / 2 - 5, 524 + ty, pw2, 'MISSIONS', 'scroll', fresh);
-    pillButton('book', cx + pw2 / 2 + 5, 524 + ty, pw2, 'FRIENDS', 'book', 0);
+    pillButton('missions', cx - pw2 / 2 - 5, 544 + ty, pw2, 'MISSIONS', 'scroll', fresh);
+    pillButton('book', cx + pw2 / 2 + 5, 544 + ty, pw2, 'FRIENDS', 'book', 0);
 
     petalCounter(26, 36 + topInset, save.petals);
     text(`BEST ${save.best}`, W / 2, 37 + topInset, 17, '#fff');
@@ -1946,7 +1990,7 @@
   function pillButton(id, cx, cy, w, label, icon, badge) {
     const h = 36;
     ui[id] = { x: cx - w / 2, y: cy - h / 2, w, h };
-    ctx.fillStyle = 'rgba(58,42,63,0.6)';
+    ctx.fillStyle = 'rgba(46,11,32,0.6)';
     roundRect(cx - w / 2, cy - h / 2, w, h, 18); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
     const ix = cx - w / 2 + 20;
@@ -2074,7 +2118,7 @@
     ctx.save();
     ctx.translate(mochi.x + 4, mochi.y + 70 + t * 6);
     ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#3a2a3f';
+    ctx.strokeStyle = PLUM;
     ctx.lineWidth = 3;
     roundRect(-11, -4, 22, 30, 10); ctx.fill(); ctx.stroke();
     roundRect(-4, -22, 8, 26, 4); ctx.fill(); ctx.stroke();
@@ -2142,11 +2186,11 @@
 
   function drawScoreCard(px, py, pw, ph) {
     const best = target > 0 ? target : (mode === 'daily' ? save.daily.best : save.best);
-    ctx.fillStyle = 'rgba(58,42,63,0.9)';
+    ctx.fillStyle = 'rgba(46,11,32,0.9)';
     roundRect(px, py + 6, pw, ph, 20); ctx.fill();
     ctx.fillStyle = '#fff6ea';
     roundRect(px, py, pw, ph, 20); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 3; ctx.stroke();
 
     const m = medalFor(score);
     const mx = px + 58, my = py + ph / 2 - 6;
@@ -2166,7 +2210,7 @@
       g.addColorStop(0, m.c1); g.addColorStop(1, m.c2);
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
       drawMochi(0, 4, 0.95, SKINS[skinIndex], { happy: true, spin: 0 });
       const sweep = live ? (stateT - 0.6) / 0.5 : 2;
       if (sweep > 0 && sweep < 1 && !reducedMotion()) {
@@ -2180,8 +2224,8 @@
       ctx.restore();
       text(m.name, mx, py + ph - 14, 12, m.c2, 'center', null);
     } else {
-      text('?', mx, my, 26, 'rgba(58,42,63,0.25)', 'center', null);
-      text('10 for medal', mx, py + ph - 14, 10, 'rgba(58,42,63,0.5)', 'center', null);
+      text('?', mx, my, 26, 'rgba(46,11,32,0.25)', 'center', null);
+      text('10 for medal', mx, py + ph - 14, 10, 'rgba(46,11,32,0.5)', 'center', null);
     }
 
     const rx = px + pw - 22;
@@ -2214,8 +2258,8 @@
     ctx.beginPath(); ctx.moveTo(x + r * 0.7, y - r * 0.4); ctx.lineTo(x + r * 0.25, y - r * 1.5); ctx.lineTo(x - r * 0.05, y - r * 1.5); ctx.lineTo(x + r * 0.2, y - r * 0.5); ctx.fill();
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
-    text(m.name, x, y + 1, r * 0.42, '#fff', 'center', '#3a2a3f');
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
+    text(m.name, x, y + 1, r * 0.42, '#fff', 'center', PLUM);
   }
 
   function makeShareCanvas() {
@@ -2235,50 +2279,49 @@
       for (let i = 0; i < 22; i++) drawPetal((i * 97 + 13) % CW, (i * 61) % 380 + 10, 4 + (i % 3), i, 'rgba(255,190,212,0.85)');
 
       // logo + mode pill
-      text('Mochi', cx - 4, 30, 26, '#fff8f0', 'right');
-      text('HOP', cx + 4, 30, 26, '#ff8fb3', 'left');
+      drawLogo(cx, 6, 168);
       const pill = mode === 'daily' ? `DAILY #${dailyNumber(runDate)} · ${prettyDate(runDate).toUpperCase()}` : 'ENDLESS MODE';
-      ctx.font = '900 12px "Trebuchet MS", Verdana, sans-serif';
+      ctx.font = `600 12px ${FONT}`;
       const pw = ctx.measureText(pill).width + 26;
-      ctx.fillStyle = mode === 'daily' ? '#9b7bff' : 'rgba(58,42,63,0.6)';
-      roundRect(cx - pw / 2, 50, pw, 22, 11); ctx.fill();
-      text(pill, cx, 62, 12, '#fff', 'center', null);
+      ctx.fillStyle = mode === 'daily' ? '#9b7bff' : 'rgba(46,11,32,0.55)';
+      roundRect(cx - pw / 2, 152, pw, 22, 11); ctx.fill();
+      text(pill, cx, 164, 12, '#fff', 'center', null);
 
       // headline: the challenge
-      text('BEAT MY', cx, 104, 26, '#fff');
-      text(String(score), cx, 166, 88, '#fff');
+      text('BEAT MY', cx, 196, 24, '#feedde');
+      text(String(score), cx, 246, 70, '#fff');
       const m = medalFor(score);
-      if (m) drawMedal(cx + 112, 172, 26, m);
+      if (m) drawMedal(cx + 98, 252, 24, m);
 
       // scene: a skewer with Mochi splatted on it, stats on the left
-      const sx = 268, tipY = 236, ground = 382;
+      const sx = 272, tipY = 286, ground = 388;
       ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, ground - 4, CW, 6);
       ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, ground + 2, CW, CH - ground);
       drawStick(sx, tipY, ground + 10, false);
       for (let i = 2; i >= 0; i--) drawBall(i, sx, tipY + TIP + DANGO_R - 4 + i * DANGO_STEP);
-      drawMochi(sx - DANGO_R - 18, 292, 2.1, SKINS[skinIndex], { dead: true, sx: 0.66, sy: 1.3, spin: 0 });
+      drawMochi(sx - DANGO_R - 16, 334, 1.75, SKINS[skinIndex], { dead: true, sx: 0.66, sy: 1.3, spin: 0 });
 
       const stats = [];
       stats.push(['petal', `${caught} petal${caught === 1 ? '' : 's'}`]);
       stats.push(['star', `${nearCount} close call${nearCount === 1 ? '' : 's'}`]);
       if (mode === 'daily' && save.daily.streak > 1) stats.push(['fire', `${save.daily.streak} day streak`]);
       stats.forEach(([icon, label], i) => {
-        const y = 262 + i * 34;
-        ctx.fillStyle = 'rgba(58,42,63,0.45)';
-        roundRect(18, y - 14, 150, 28, 14); ctx.fill();
-        if (icon === 'petal') drawSakura(34, y, 9, 0);
-        else if (icon === 'star') { ctx.fillStyle = '#fff3a0'; ctx.save(); ctx.translate(34, y); ctx.rotate(0.6); ctx.fillRect(-6, -6, 12, 12); ctx.restore(); }
-        else { ctx.fillStyle = '#ff9f43'; ctx.beginPath(); ctx.arc(34, y + 2, 7, 0, Math.PI * 2); ctx.fill(); }
-        text(label, 50, y + 1, 14, '#fff', 'left', null);
+        const y = 296 + i * 30;
+        ctx.fillStyle = 'rgba(46,11,32,0.5)';
+        roundRect(16, y - 12, 150, 25, 12.5); ctx.fill();
+        if (icon === 'petal') drawSakura(31, y, 8, 0);
+        else if (icon === 'star') { ctx.fillStyle = '#fff3a0'; ctx.save(); ctx.translate(31, y); ctx.rotate(0.6); ctx.fillRect(-5, -5, 10, 10); ctx.restore(); }
+        else { ctx.fillStyle = '#ff9f43'; ctx.beginPath(); ctx.arc(31, y + 1, 6, 0, Math.PI * 2); ctx.fill(); }
+        text(label, 46, y + 1, 13, '#fff', 'left', null);
       });
 
       // call to action
-      ctx.fillStyle = 'rgba(58,42,63,0.9)';
-      roundRect(cx - 130, 401, 260, 38, 19); ctx.fill();
-      ctx.fillStyle = '#ff7aa2';
-      roundRect(cx - 130, 397, 260, 38, 19); ctx.fill();
-      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
-      text('Tap the link · play free', cx, 417, 17, '#fff');
+      ctx.fillStyle = 'rgba(46,11,32,0.9)';
+      roundRect(cx - 130, 405, 260, 36, 18); ctx.fill();
+      ctx.fillStyle = '#fd64a6';
+      roundRect(cx - 130, 401, 260, 36, 18); ctx.fill();
+      ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
+      text('Tap the link · play free', cx, 420, 17, '#fff');
     } finally {
       ctx = prev;
     }
@@ -2316,40 +2359,136 @@
       for (let i = 0; i < 26; i++) drawPetal((i * 97 + 13) % CW, (i * 61) % 280 + 6, 4 + (i % 3), i, 'rgba(255,170,200,0.8)');
       ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, CH - 52, CW, 6);
       ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, CH - 46, CW, 46);
-      // two skewers and a happy Mochi hopping between them
-      const tip = 132;
-      drawStick(430, -10, tip, true);
-      for (let i = 2; i >= 0; i--) drawBall(i, 430, tip - TIP - DANGO_R + 4 - i * DANGO_STEP);
-      drawStick(430, tip + 120, CH - 40, false);
-      for (let i = 2; i >= 0; i--) drawBall(i, 430, tip + 120 + TIP + DANGO_R - 4 + i * DANGO_STEP);
-      drawMochi(372, 196, 2.3, SKINS[0], { happy: true, spin: 0, perk: 1 });
-      text('Mochi', 150, 82, 64, '#fff8f0');
-      text('HOP', 150, 140, 46, '#ff8fb3');
-      text('Can you beat my score?', 150, 196, 22, '#fff');
-      ctx.fillStyle = 'rgba(58,42,63,0.9)';
-      roundRect(48, 230, 204, 40, 20); ctx.fill();
-      ctx.fillStyle = '#ff7aa2';
-      roundRect(48, 226, 204, 40, 20); ctx.fill();
-      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
-      text('Play free', 150, 247, 20, '#fff');
+      // logo on the left, a winking Mochi hopping between skewers on the right
+      drawLogo(160, 4, 280);
+      text('Can you beat my score?', 160, 268, 21, '#fff');
+      const sx = 488, gapY = 150, gap = 150;
+      drawStick(sx, -10, gapY - gap / 2, true);
+      for (let i = 2; i >= 0; i--) drawBall(i, sx, gapY - gap / 2 - TIP - DANGO_R + 4 - i * DANGO_STEP);
+      drawStick(sx, gapY + gap / 2, CH - 40, false);
+      for (let i = 2; i >= 0; i--) drawBall(i, sx, gapY + gap / 2 + TIP + DANGO_R - 4 + i * DANGO_STEP);
+      drawMochi(410, 150, 2.2, SKINS[0], { happy: true, spin: 0, perk: 0.15, hopping: true });
+      ctx.fillStyle = 'rgba(46,11,32,0.9)';
+      roundRect(400, 276, 150, 32, 16); ctx.fill();
+      ctx.fillStyle = '#fd64a6';
+      roundRect(400, 272, 150, 32, 16); ctx.fill();
+      ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
+      text('Play free', 475, 289, 18, '#fff');
     } finally { ctx = prev; }
     return cv;
   }
 
-  // App icon: Mochi on pink. Maskable icons keep the art inside the safe circle.
-  function makeIconCanvas(size, maskable) {
+  // ---------------------------------------------------------------------------
+  // Brand artwork for icons and the store (rendered by tools/render-assets.js)
+  // ---------------------------------------------------------------------------
+  function iconBackground(size) {
+    const g = ctx.createRadialGradient(size * 0.5, size * 0.38, size * 0.05, size * 0.5, size * 0.5, size * 0.75);
+    g.addColorStop(0, '#ffd3e2'); g.addColorStop(0.55, '#ff9cc4'); g.addColorStop(1, '#f2669f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    // soft sunburst + a few petals
+    ctx.save();
+    ctx.translate(size / 2, size * 0.46);
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-size * 0.08, -size); ctx.lineTo(size * 0.08, -size); ctx.fill();
+    }
+    ctx.restore();
+    const k = size / 100;
+    for (const [x, y, sz, a] of [[14, 20, 4, 0.5], [86, 16, 3.5, 2], [10, 78, 3.5, 1.2], [90, 74, 4, 2.6], [78, 46, 2.6, 0.2], [22, 50, 2.6, 3]]) {
+      drawPetal(x * k, y * k, sz * k, a, 'rgba(255,255,255,0.75)');
+    }
+  }
+
+  // Mochi with the logo's wink, centred on (cx, cy), k = scale. Art is ~44 x 62 units.
+  function iconMochi(cx, cy, k, plain = false) {
+    if (!plain) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.beginPath(); ctx.arc(cx, cy + 6 * k, 30 * k, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    drawMochi(cx, cy + 10.5 * k, k, SKINS[0], { happy: true, spin: 0, perk: 0.15, noShadow: plain });
+  }
+
+  // kind: 'web' (rounded), 'play' (full square), 'maskable' (full bleed, 80% safe zone),
+  // 'fg' / 'bg' (Android adaptive layers, 66/108 safe zone), 'mono' (themed icon silhouette)
+  function makeIconCanvas(size, kind = 'web') {
     const cv = document.createElement('canvas');
     cv.width = cv.height = size;
     const prev = ctx;
     ctx = cv.getContext('2d');
     try {
-      ctx.fillStyle = '#ffb3cc';
-      if (maskable) ctx.fillRect(0, 0, size, size);
-      else { roundRect(0, 0, size, size, size * 0.22); ctx.fill(); }
-      const k = size / 100 * (maskable ? 0.8 : 1);
-      ctx.translate(size / 2, size / 2 + 8 * k);
-      drawMochi(0, 0, 1.75 * k, SKINS[0], { spin: 0, perk: 0.6 });
+      if (kind === 'web') { roundRect(0, 0, size, size, size * 0.22); ctx.clip(); }
+      if (kind !== 'fg' && kind !== 'mono') iconBackground(size);
+      if (kind === 'bg') return cv;
+      // how much of the canvas the ~62-unit-tall art may fill
+      const fill = { web: 0.78, play: 0.78, maskable: 0.62, fg: 0.52, mono: 0.52 }[kind];
+      const k = size * fill / 62;
+      iconMochi(size / 2, size / 2, k, kind === 'mono');
+      if (kind === 'mono') {
+        // single-colour silhouette with the face cut out, for Android themed icons
+        ctx.globalCompositeOperation = 'source-in';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+        ctx.globalCompositeOperation = 'destination-out';
+        const fx = size / 2, fy = size / 2 + 10.5 * k, r = 18 * k;
+        ctx.beginPath(); ctx.ellipse(fx - r * 0.36, fy - r * 0.06, 3.6 * k, 4.4 * k, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 2.4 * k; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(fx + r * 0.36 + 3.6 * k, fy - r * 0.06 - 3 * k); ctx.lineTo(fx + r * 0.36 - 2.4 * k, fy - r * 0.06); ctx.lineTo(fx + r * 0.36 + 3.6 * k, fy - r * 0.06 + 3 * k); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx - 4.6 * k, fy + r * 0.2); ctx.quadraticCurveTo(fx, fy + r * 0.2 + 1.1 * k, fx + 4.6 * k, fy + r * 0.2);
+        ctx.bezierCurveTo(fx + 4.4 * k, fy + r * 0.2 + 5.8 * k, fx - 4.4 * k, fy + r * 0.2 + 5.8 * k, fx - 4.6 * k, fy + r * 0.2); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
     } finally { ctx = prev; }
+    return cv;
+  }
+
+  // Google Play feature graphic, 1024 x 500. Logo centred, scene around it, nothing important near the edges.
+  function makeFeatureCanvas() {
+    const CW = 1024, CH = 500;
+    const cv = document.createElement('canvas');
+    cv.width = CW; cv.height = CH;
+    const prev = ctx, prevW = W;
+    ctx = cv.getContext('2d');
+    W = CW;
+    try {
+      const g = ctx.createLinearGradient(0, 0, 0, CH);
+      g.addColorStop(0, '#8fd3ff'); g.addColorStop(1, '#fff1d6');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH);
+      ctx.fillStyle = 'rgba(255,246,176,0.5)';
+      ctx.beginPath(); ctx.arc(860, 110, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff6b0';
+      ctx.beginPath(); ctx.arc(860, 110, 48, 0, Math.PI * 2); ctx.fill();
+      const gy = 430;
+      ctx.save(); ctx.translate(0, gy - 548);   // reuse the game's scenery, which is drawn against a 548 ground line
+      ridge(140, 548 - 150, 50, 1.3, '#a7c7e7', 10);
+      drawToriiAndPagodas(80, 548 - 62, '#7fb59a');
+      ridge(300, 548 - 40, 26, 4.1, '#7fb59a', 8);
+      drawSakuraTrees(60, 546, 'rgba(90,60,70,0.55)', 'rgba(255,190,210,0.85)');
+      ctx.restore();
+      ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, gy - 4, CW, 10);
+      ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, gy + 6, CW, CH - gy);
+      ctx.strokeStyle = 'rgba(160,130,85,0.45)'; ctx.lineWidth = 2;
+      for (let row = 0; row < 4; row++) {
+        ctx.beginPath();
+        for (let x = 0; x <= CW; x += 8) { const y = gy + 22 + row * 15 + Math.sin(x * 0.05 + row) * 2; if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+      for (let i = 0; i < 24; i++) drawPetal((i * 97 + 13) % CW, (i * 61) % 380 + 10, 5 + (i % 3), i, 'rgba(255,170,200,0.85)');
+      // skewers framing the logo
+      const skew = (x, tipY, up) => {
+        if (up) { drawStick(x, tipY, gy + 12, false); for (let i = 2; i >= 0; i--) drawBall(i, x, tipY + TIP + DANGO_R - 4 + i * DANGO_STEP); }
+        else { drawStick(x, -20, tipY, true); for (let i = 2; i >= 0; i--) drawBall(i, x, tipY - TIP - DANGO_R + 4 - i * DANGO_STEP); }
+      };
+      ctx.save(); ctx.translate(150, 0); ctx.scale(1.25, 1.25); skew(0, 120, false); skew(0, 250, true); ctx.restore();
+      ctx.save(); ctx.translate(880, 0); ctx.scale(1.25, 1.25); skew(0, 210, true); ctx.restore();
+      // friends hopping beside the logo
+      drawMochi(250, 230, 1.7, SKINS.find(k => k.id === 'sakura'), { happy: true, spin: 0, perk: 0.3, hopping: true });
+      drawMochi(790, 330, 1.7, SKINS.find(k => k.id === 'matcha'), { spin: 0.4, perk: 0.5 });
+      drawLogo(CW / 2, 18, 470);
+    } finally { ctx = prev; W = prevW; }
     return cv;
   }
 
@@ -2390,12 +2529,12 @@
   function drawHint(h) {
     const a = clamp(h.life / 0.4, 0, 1) * clamp((2.6 - h.life) / 0.2, 0, 1);
     ctx.globalAlpha = a;
-    ctx.font = '900 14px "Trebuchet MS", Verdana, sans-serif';
+    ctx.font = `600 14px ${FONT}`;
     const w = ctx.measureText(h.msg).width + 22;
     const x = clamp(h.x, w / 2 + 6, W - w / 2 - 6);
     ctx.fillStyle = '#fff6ea';
     roundRect(x - w / 2, h.y - 15, w, 30, 15); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 2; ctx.stroke();
     if (h.follow) {
       ctx.fillStyle = '#fff6ea';
       ctx.beginPath(); ctx.moveTo(h.x - 7, h.y + 14); ctx.lineTo(h.x + 7, h.y + 14); ctx.lineTo(h.x, h.y + 22); ctx.fill();
@@ -2435,11 +2574,11 @@
     // current run
     const pw = Math.min(290, W - 30), px = cx - pw / 2, py = 128 + ty;
     const ch = 112;
-    ctx.fillStyle = 'rgba(58,42,63,0.9)';
+    ctx.fillStyle = 'rgba(46,11,32,0.9)';
     roundRect(px, py + 5, pw, ch, 18); ctx.fill();
     ctx.fillStyle = '#fff6ea';
     roundRect(px, py, pw, ch, 18); ctx.fill();
-    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = PLUM; ctx.lineWidth = 3; ctx.stroke();
     text('SCORE', px + 24, py + 24, 13, '#b06b85', 'left', null);
     text(String(score), px + 24, py + 58, 40, '#fff', 'left');
     const best = target > 0 ? target : (mode === 'daily' ? save.daily.best : save.best);
@@ -2709,6 +2848,6 @@
   window.__mochi = {
     get state() { return state; }, get score() { return score; }, set score(v) { score = v; displaySky = v; }, get W() { return W; },
     mochi, pipes: () => pipes, save, ballCenters, COL_W, DANGO_R,
-    get mode() { return mode; }, makePromoCanvas, makeIconCanvas, get paused() { return paused; }, get countdown() { return countdown; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
+    get mode() { return mode; }, makePromoCanvas, makeIconCanvas, makeFeatureCanvas, get paused() { return paused; }, get countdown() { return countdown; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
   };
 })();

@@ -50,13 +50,16 @@ const check = (name, ok, detail = '') => {
   };
   const crash = async () => { await g(() => { window.__mochi.mochi.y = 640; }); return waitFor('over'); };
   const startClassic = async () => {
-    await page.mouse.click(VW / 2, V(386));
+    await page.mouse.click(VW / 2, V(420));
     if ((await state()) === 'ready') await page.mouse.click(VW / 2, V(500));
   };
 
   // 1. Loads cleanly
   await fresh();
   check('loads to the title screen', (await state()) === 'title');
+  await g(() => window.mochiAssetsReady());
+  check('brand font (Fredoka) and logo load', await g(() => document.fonts.check('700 20px Fredoka') && !!window.MOCHI_LOGO));
+  check('share card exports with the logo on it (canvas not tainted)', await g(() => { try { return window.__mochi.makeShareCanvas().toDataURL().length > 10000; } catch (e) { return false; } }));
 
   // 2. A real run scores
   await startClassic();
@@ -84,7 +87,7 @@ const check = (name, ok, detail = '') => {
     clearInterval(keep);
     return g(() => window.__mochi.pipes().map((q) => [Math.round(q.baseY), q.golden, !!q.petal]));
   };
-  await page.mouse.click(VW / 2, V(446));
+  await page.mouse.click(VW / 2, V(476));
   await page.mouse.click(VW / 2, V(500));
   const a = await dailyLayout();
   await crash(); await page.waitForTimeout(500);
@@ -125,7 +128,7 @@ const check = (name, ok, detail = '') => {
 
   // 9. Challenge links set a target on the same daily course
   await fresh(URL + '?c=2026-11-01&s=26');
-  await page.mouse.click(VW / 2, V(446));
+  await page.mouse.click(VW / 2, V(476));
   await page.mouse.click(VW / 2, V(500));
   const ch = await g(() => [window.__mochi.mode, window.__mochi.target]);
   check('challenge link starts a daily run with target 26', ch[0] === 'daily' && ch[1] === 26, JSON.stringify(ch));

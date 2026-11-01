@@ -1,7 +1,7 @@
 // Mochi Hop service worker: cache the game so it opens offline.
 // Bump VERSION whenever game files change so players get the update.
-const VERSION = 'mochi-hop-v1';
-const FILES = ['./', 'index.html', 'game.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const VERSION = 'mochi-hop-v2';
+const FILES = ['./', 'index.html', 'game.js', 'logo.js', 'fonts/fredoka.css', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

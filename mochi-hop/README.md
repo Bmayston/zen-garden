@@ -5,11 +5,18 @@ A one-tap arcade game for Android. Tap to make **Mochi** hop between skewers of
 blossoms) in a zen garden. Each gap scores a point. Touch a skewer and Mochi,
 being sticky, splats onto it, slides down and flops flat on the sand.
 
+## Brand
+
+The title screen, share card, link preview and store art all use the **Mochi Hop logo** (`store/brand/`),
+the **Fredoka** typeface and the logo's plum, cream and pink palette. See [store/README.md](store/README.md)
+for the brand kit and every Google Play asset.
+
 ## The character
 
-Mochi is a round, squishy rice cake. Its signature is the **sprout** on its head: two
-big leaves that spin like a helicopter on every hop, droop while it falls and point up
-when it scores. Mochi squashes and stretches, blinks, glances up and down, opens its
+Mochi is a round, squishy rice cake drawn to match the logo: a plum outline, big glossy
+eyes, an open smile with a pink tongue and a cheeky **wink** when it's happy. Its other
+signature is the **sprout** on its head: two broad leaves that spin like a helicopter on
+every hop, droop while it falls and point up when it scores. Mochi squashes and stretches, blinks, glances up and down, opens its
 mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its own
 "boing" sound.
 
@@ -55,7 +62,8 @@ The same game runs in any browser and is published to GitHub Pages at
 - `manifest.webmanifest`, icons and `sw.js` make it installable ("Add to home screen") and
   playable offline. Bump `VERSION` in `sw.js` when game files change.
 - Set `PLAY_STORE_URL` in `game.js` once the app is live to show a Google Play button on the web.
-- `node mochi-hop/tools/render-assets.js` redraws `og.png` and the icons from the game's art.
+- `node mochi-hop/tools/render-assets.js` redraws `og.png`, the web and Android icons and the Play
+  feature graphic from the game's art; `tools/render-screenshots.js` makes the store screenshots.
 
 ## Tests
 
