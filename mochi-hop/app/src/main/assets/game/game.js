@@ -275,6 +275,27 @@
     const [y, m, d] = key.split('-').map(Number);
     return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]}`;
   }
+  // Public web version of the game (GitHub Pages). Shared links open here, so a
+  // friend can play instantly in the browser with no install.
+  const SHARE_URL = 'https://bmayston.github.io/zen-garden/play/';
+  const DAILY_EPOCH = Date.UTC(2026, 10, 1);   // 1 Nov 2026 = Daily #1
+  function dailyNumber(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return Math.round((Date.UTC(y, m - 1, d) - DAILY_EPOCH) / 86400000) + 1;
+  }
+  // A challenge link looks like ?c=2026-11-01&s=26 (daily course) or ?s=26 (classic).
+  const challenge = (() => {
+    try {
+      const q = new URLSearchParams(location.search);
+      const sc = parseInt(q.get('s'), 10);
+      if (!(sc >= 0 && sc < 10000)) return null;
+      const c = q.get('c');
+      return { score: sc, date: c && /^\d{4}-\d{2}-\d{2}$/.test(c) ? c : null };
+    } catch (e) { return null; }
+  })();
+  let runDate = '';          // date whose skewers the daily run uses
+  let target = 0;            // score to beat in a challenge run (0 = none)
+
   let rng = Math.random;
   const srand = (a, b) => a + rng() * (b - a);
 
@@ -332,9 +353,10 @@
   }
   const missionDef = id => MISSION_POOL.find(m => m.id === id);
 
-  function pickMission(exclude) {
-    const options = MISSION_POOL.filter(m => !exclude.includes(m.id));
-    return { id: options[Math.floor(Math.random() * options.length)].id, progress: 0, done: false };
+  function pickMission(excludeIds, excludeTypes = []) {
+    let options = MISSION_POOL.filter(m => !excludeIds.includes(m.id) && !excludeTypes.includes(m.type));
+    if (!options.length) options = MISSION_POOL.filter(m => !excludeIds.includes(m.id));
+    return { id: options[Math.floor(Math.random() * options.length)].id, progress: 0, done: false, isNew: true };
   }
   // Replaces finished missions; only writes to storage when something changed.
   function ensureMissions() {
@@ -342,17 +364,50 @@
     const used = old.map(m => m.id);
     const list = [];
     let changed = old.length !== 3;
+    const finishedTypes = [];
     for (const m of old) {
       if (list.length >= 3) break;
-      if (!missionDef(m.id) || m.done) { changed = true; continue; }
+      if (!missionDef(m.id) || m.done) {
+        changed = true;
+        if (missionDef(m.id)) finishedTypes.push(missionDef(m.id).type);
+        continue;
+      }
       list.push(m);
     }
     while (list.length < 3) {
-      const m = pickMission(used.concat(list.map(x => x.id)));
+      // a different kind of goal than the ones just finished, so it never looks like a reset
+      const types = finishedTypes.concat(list.map(x => missionDef(x.id).type));
+      const m = pickMission(used.concat(list.map(x => x.id)), types);
       used.push(m.id);
       list.push(m);
     }
     if (changed) { save.missions = list; store.set('missions', list); }
+  }
+
+  // Current value of a mission during a run (for the live "Mission complete!" toast).
+  function liveMissionValue(m, d) {
+    switch (d.type) {
+      case 'score_run': return score;
+      case 'petals_run': return caught;
+      case 'near_run': return nearCount;
+      case 'nopetal_run': return caught === 0 ? score : 0;
+      case 'petals_total': return m.progress + caught;
+      case 'near_total': return m.progress + nearCount;
+      case 'score_total': return m.progress + score;
+    }
+    return 0;
+  }
+  function liveMissionCheck() {
+    for (const m of save.missions || []) {
+      if (m.done || m.toasted) continue;
+      const d = missionDef(m.id);
+      if (liveMissionValue(m, d) >= d.n) {
+        m.toasted = true;
+        sfx.mission();
+        haptic('click');
+        popups.push({ x: W / 2, y: 150 + topInset, text: `Mission complete! +${d.reward}`, life: 1.8, size: 20, color: '#8ff0b4', vy: 12 });
+      }
+    }
   }
 
   // Applies a finished run to the missions; returns petals earned.
@@ -375,7 +430,8 @@
         case 'daily_play': if (run.daily) v = 1; break;
       }
       m.progress = Math.min(v, d.n);
-      if (m.progress >= d.n) { m.done = true; m.fresh = true; earned += d.reward; }
+      m.isNew = false;
+      if (m.progress >= d.n) { m.done = true; if (!m.toasted) m.lateDone = true; earned += d.reward; }
     }
     store.set('missions', save.missions);
     return earned;
@@ -584,6 +640,7 @@
   let nearCount = 0;
   let petalFreeScore = 0;     // score reached before the first petal of the run
   let caught = 0;             // petals caught (not close-call bonuses)
+  let missionsOpen = false;
   let missionPetals = 0;      // petals earned from missions this run
 
   for (let i = 0; i < 14; i++) floaters.push(newFloater(true));
@@ -624,13 +681,22 @@
     ensureMissions();
     if (mode === 'daily') {
       refreshDaily();
-      rng = mulberry32(seedFor(save.daily.date));
+      if (!runDate) runDate = save.daily.date;
+      rng = mulberry32(seedFor(runDate));
     } else {
       rng = Math.random;
     }
   }
 
-  function setState(s) { state = s; stateT = 0; }
+  function setState(s) {
+    state = s; stateT = 0;
+    if (s === 'title') {
+      // clear the crash pose so the menu shows a normal, round Mochi
+      mochi.splat = null; mochi.dead = false;
+      mochi.sx = 1; mochi.sy = 1; mochi.rot = 0; mochi.vy = 0;
+      missionsOpen = false;
+    }
+  }
 
   function spawnParticle(x, y, vx, vy, life, size, color, kind) {
     particles.push({ x, y, vx, vy, life, max: life, size, color, kind });
@@ -700,7 +766,7 @@
   function endRun() {
     save.played++;
     store.set('played', save.played);
-    if (mode === 'daily') {
+    if (mode === 'daily' && runDate === dateKey()) {
       refreshDaily();
       const d = save.daily;
       const today = dateKey();
@@ -712,7 +778,7 @@
       d.runs++;
       if (score > d.best) { d.best = score; newBest = true; }
       store.set('daily', d);
-    } else if (score > save.best) {
+    } else if (mode === 'classic' && score > save.best) {
       save.best = score; newBest = true; store.set('best', save.best);
     }
     if (caught === 0) petalFreeScore = score;
@@ -720,7 +786,8 @@
     t.splats++; t.runs++; t.petals += caught; t.near += nearCount; t.score += score;
     store.set('totals', t);
     missionPetals = applyMissions({ score, petals: caught, near: nearCount, petalFreeScore, daily: mode === 'daily' });
-    if (missionPetals > 0) { setTimeout(() => { sfx.mission(); haptic('click'); }, 350); }
+    if (save.missions.some(m => m.lateDone)) { setTimeout(() => { sfx.mission(); haptic('click'); }, 350); }
+    save.missions.forEach(m => { delete m.lateDone; });
     save.petals += runPetals + missionPetals;
     store.set('petals', save.petals);
   }
@@ -815,7 +882,7 @@
 
     if (state === 'title') {
       mochi.x = W / 2;
-      mochi.y = 240 + titleY() + Math.sin(time * 3) * 6;
+      mochi.y = 254 + titleY() + Math.sin(time * 3) * 6;
       if (Math.sin(time * 3) > 0.995 && mochi.spinV === 0) mochi.spinV = 18;
     } else if (state === 'ready') {
       mochi.x = W * 0.3;
@@ -852,6 +919,7 @@
           p.passed = true;
           score++;
           if (caught === 0) petalFreeScore = score;
+          liveMissionCheck();
           if (p.minClear < 7) {
             // scraped past a skewer: reward the risk
             nearCount++;
@@ -860,6 +928,7 @@
             haptic('tick');
             popups.push({ x: mochi.x + 10, y: mochi.y - 30, text: 'Close! +1', life: 0.9, size: 17, color: '#fff3a0' });
             for (let i = 0; i < 6; i++) spawnParticle(mochi.x, mochi.y, rand(-80, 80), rand(-160, -40), 0.5, rand(3, 5), '#fff3a0', 'star');
+            liveMissionCheck();
           }
           scorePop = 1;
           mochi.perk = 1;
@@ -882,6 +951,7 @@
             runPetals++;
             caught++;
             sfx.petal();
+            liveMissionCheck();
             popups.push({ x: px, y: py, text: '+1', life: 0.8, size: 18, color: '#ffb3cc' });
             for (let i = 0; i < 8; i++) spawnParticle(px, py, rand(-120, 120), rand(-160, 60), 0.6, rand(3, 5), '#ff9ec0', 'petal');
           }
@@ -925,7 +995,7 @@
     let n = 0;
     for (let i = 0; i < particles.length; i++) if (particles[i].life > 0) particles[n++] = particles[i];
     particles.length = n;
-    for (const u of popups) { u.life -= dt; u.y -= 40 * dt; }
+    for (const u of popups) { u.life -= dt; u.y -= (u.vy ?? 40) * dt; }
     n = 0;
     for (let i = 0; i < popups.length; i++) if (popups[i].life > 0) popups[n++] = popups[i];
     popups.length = n;
@@ -1433,6 +1503,12 @@
       }
       ctx.globalAlpha = (m.done && !compact) ? 1 : (m.done ? 0.6 : 1);
       text(missionText(d), x + 34, ry + 1, 13, '#fff', 'left', null);
+      if (m.isNew && !m.done) {
+        const tw = ctx.measureText(missionText(d)).width;
+        ctx.fillStyle = '#ff5f8f';
+        roundRect(x + 40 + tw, ry - 8, 32, 16, 6); ctx.fill();
+        text('NEW', x + 56 + tw, ry + 1, 10, '#fff', 'center', null);
+      }
       const right = m.done ? `+${d.reward}` : `${m.progress}/${d.n}`;
       text(right, x + w - 30, ry + 1, 13, m.done ? '#ffe36e' : '#ffd3e2', 'right', null);
       drawSakura(x + w - 16, ry, 6, 0);
@@ -1448,12 +1524,12 @@
     const ty = titleY();
 
     const bob = Math.sin(time * 2) * 3;
-    text('Mochi', cx, 96 + ty + bob, 56, '#fff8f0', 'center', '#3a2a3f');
-    text('HOP', cx, 144 + ty + bob, 40, '#ff8fb3', 'center', '#3a2a3f');
+    text('Mochi', cx, 112 + ty + bob, 56, '#fff8f0', 'center', '#3a2a3f');
+    text('HOP', cx, 158 + ty + bob, 40, '#ff8fb3', 'center', '#3a2a3f');
 
     const sh = uiShake > 0 ? Math.sin(uiShake * 40) * 6 * uiShake : 0;
     ctx.globalAlpha = unlocked ? 1 : 0.55;
-    drawMochi(cx + sh, mochi.y, 1.9, skin, mochiOpts({ rot: 0, vy: 0, dead: false, hopping: false }));
+    drawMochi(cx + sh, mochi.y, 1.9, skin, mochiOpts({ rot: 0, vy: 0, dead: false, hopping: false, sx: 1, sy: 1 }));
     ctx.globalAlpha = 1;
     if (!unlocked) {
       const lx = cx + 36, ly = mochi.y + 24;
@@ -1466,36 +1542,90 @@
     }
 
     const ax = Math.min(115, W / 2 - 34);
-    arrowButton('left', cx - ax, 240 + ty, -1);
-    arrowButton('right', cx + ax, 240 + ty, 1);
+    arrowButton('left', cx - ax, 254 + ty, -1);
+    arrowButton('right', cx + ax, 254 + ty, 1);
 
-    text(skin.name, cx, 300 + ty, 24, '#fff');
+    text(skin.name, cx, 316 + ty, 24, '#fff');
     for (let i = 0; i < SKINS.length; i++) {
       ctx.fillStyle = i === skinIndex ? '#fff' : 'rgba(255,255,255,0.45)';
-      ctx.beginPath(); ctx.arc(cx + (i - (SKINS.length - 1) / 2) * 16, 322 + ty, i === skinIndex ? 5 : 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + (i - (SKINS.length - 1) / 2) * 16, 340 + ty, i === skinIndex ? 5 : 4, 0, Math.PI * 2); ctx.fill();
     }
 
     if (unlocked) {
-      button('play', cx, 366 + ty, 180, 52, 'PLAY', '#ff7aa2');
+      button('play', cx, 386 + ty, 180, 52, 'PLAY', '#ff7aa2');
     } else {
       const can = save.petals >= skin.cost;
-      button('play', cx, 366 + ty, 200, 52, `UNLOCK ${skin.cost}`, '#ffb347', can);
-      if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 340 + ty, 13, '#fff');
+      button('play', cx, 386 + ty, 200, 52, `UNLOCK ${skin.cost}`, '#ffb347', can);
+      if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 356 + ty, 13, '#fff');
     }
 
     refreshDaily();
     const d = save.daily;
-    button('daily', cx, 426 + ty, 180, 44, 'DAILY', '#9b7bff', unlocked);
-    const dailyInfo = d.runs > 0 ? `Today's best ${d.best}` : `New skewers for ${prettyDate(d.date)}`;
-    text(d.streak > 0 ? `${dailyInfo} · ${d.streak} day streak` : dailyInfo, cx, 459 + ty, 12, '#fff');
+    if (challenge) {
+      // opened from a friend's challenge link
+      const pulse = 1 + Math.sin(time * 5) * 0.03;
+      ctx.save(); ctx.translate(cx, 446 + ty); ctx.scale(pulse, pulse);
+      button('daily', 0, 0, 200, 46, `BEAT ${challenge.score}`, '#ffb000', unlocked);
+      ctx.restore();
+      ui.daily = { x: cx - 100, y: 446 + ty - 23, w: 200, h: 46 };
+      text(challenge.date ? `A friend's score on Daily #${dailyNumber(challenge.date)}` : "A friend's score — can you beat it?", cx, 480 + ty, 12, '#fff');
+    } else {
+      button('daily', cx, 446 + ty, 180, 46, 'DAILY', '#9b7bff', unlocked);
+      const dailyInfo = d.runs > 0 ? `Daily #${dailyNumber(d.date)} · best ${d.best}` : `Daily #${dailyNumber(d.date)} · new skewers today`;
+      text(d.streak > 0 ? `${dailyInfo} · ${d.streak} day streak` : dailyInfo, cx, 480 + ty, 12, '#fff');
+    }
 
+    // missions toggle
     ensureMissions();
-    const mw = Math.min(300, W - 24);
-    drawMissions(cx - mw / 2, 476 + ty, mw, true);
+    const done = save.missions.filter(m => m.done).length;
+    const fresh = save.missions.filter(m => m.isNew && !m.done).length;
+    missionsButton(cx, 524 + ty, fresh);
 
     petalCounter(26, 36 + topInset, save.petals);
     text(`BEST ${save.best}`, W / 2, 37 + topInset, 17, '#fff');
     settingsButtons();
+
+    if (missionsOpen) drawMissionsOverlay();
+  }
+
+  function missionsButton(cx, cy, badge) {
+    const w = 150, h = 36;
+    ui.missions = { x: cx - w / 2, y: cy - h / 2, w, h };
+    ctx.fillStyle = 'rgba(58,42,63,0.6)';
+    roundRect(cx - w / 2, cy - h / 2, w, h, 18); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
+    // scroll icon
+    const ix = cx - w / 2 + 22;
+    ctx.fillStyle = '#fff6ea';
+    roundRect(ix - 8, cy - 9, 16, 18, 3); ctx.fill();
+    ctx.strokeStyle = '#b06b85'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(ix - 4, cy - 4 + i * 4); ctx.lineTo(ix + 4, cy - 4 + i * 4); ctx.stroke(); }
+    text('MISSIONS', cx + 12, cy + 1, 15, '#fff', 'center', null);
+    if (badge > 0) {
+      ctx.fillStyle = '#ff4f7a';
+      ctx.beginPath(); ctx.arc(cx + w / 2 - 4, cy - h / 2 + 4, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      text(String(badge), cx + w / 2 - 4, cy - h / 2 + 5, 11, '#fff', 'center', null);
+    }
+  }
+
+  function drawMissionsOverlay() {
+    for (const k of ['play', 'daily', 'left', 'right', 'missions']) delete ui[k];
+    ctx.fillStyle = 'rgba(29,27,47,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    const pw = Math.min(310, W - 24), px = W / 2 - pw / 2, py = 200 + titleY();
+    const cardH = 26 * save.missions.length + 34 + 44;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    roundRect(px - 6, py - 6 + 6, pw + 12, cardH + 12, 20); ctx.fill();
+    ctx.fillStyle = '#4a3550';
+    roundRect(px - 6, py - 6, pw + 12, cardH + 12, 20); ctx.fill();
+    ctx.strokeStyle = '#ffd3e2'; ctx.lineWidth = 2; ctx.stroke();
+    const h = drawMissions(px, py, pw, false);
+    const t = save.totals;
+    text(`All time: ${t.runs} runs · ${t.near} close calls · ${t.petals} petals`, W / 2, py + h + 14, 11, '#ffe3ee', 'center', null);
+    text('Tap anywhere to close', W / 2, py + h + 34, 13, '#fff', 'center', null);
+    // the overlay swallows taps until closed
+    ui.overlay = { x: 0, y: 0, w: W, h: H };
   }
 
   function drawReady() {
@@ -1535,7 +1665,12 @@
 
     const pw = Math.min(290, W - 30), ph = 130;
     const px = cx - pw / 2, py = 104 + topInset * 0.7 + dy;
-    if (mode === 'daily') text(`DAILY · ${prettyDate(save.daily.date)}`, cx, py - 18, 15, '#e3d6ff');
+    if (target > 0) {
+      const won = score > target;
+      text(won ? `You beat ${target}!` : `${target - score + 1} more to beat ${target}`, cx, py - 18, 17, won ? '#8ff0b4' : '#ffd3e2');
+    } else if (mode === 'daily') {
+      text(`DAILY #${dailyNumber(runDate)} · ${prettyDate(runDate)}`, cx, py - 18, 15, '#e3d6ff');
+    }
     drawScoreCard(px, py, pw, ph);
 
     let ly = py + ph + 28;
@@ -1552,14 +1687,22 @@
     ctx.restore();
 
     const by = groundY() - 34;
-    button('share', cx - 68, by, 124, 44, 'SHARE', '#ff9f43');
+    const brag = newBest || score >= 10 || (target > 0 && score > target);
+    if (brag) {
+      ctx.save();
+      ctx.globalAlpha = ease * (0.35 + 0.25 * Math.sin(time * 5));
+      ctx.fillStyle = '#ffe36e';
+      roundRect(cx - 68 - 70, by - 28, 140, 58, 22); ctx.fill();
+      ctx.restore();
+    }
+    button('share', cx - 68, by, 124, 44, 'CHALLENGE', '#ff9f43');
     button('skins', cx + 68, by, 124, 44, 'MENU', '#7ac7ff');
     ctx.globalAlpha = 1;
     settingsButtons();
   }
 
   function drawScoreCard(px, py, pw, ph) {
-    const best = mode === 'daily' ? save.daily.best : save.best;
+    const best = target > 0 ? target : (mode === 'daily' ? save.daily.best : save.best);
     ctx.fillStyle = 'rgba(58,42,63,0.9)';
     roundRect(px, py + 6, pw, ph, 20); ctx.fill();
     ctx.fillStyle = '#fff6ea';
@@ -1586,7 +1729,7 @@
     const rx = px + pw - 22;
     text('SCORE', rx, py + 24, 13, '#b06b85', 'right', null);
     text(String(score), rx, py + 50, 30, '#fff', 'right');
-    text(mode === 'daily' ? 'TODAY' : 'BEST', rx, py + 80, 13, '#b06b85', 'right', null);
+    text(target > 0 ? 'TO BEAT' : (mode === 'daily' ? 'TODAY' : 'BEST'), rx, py + 80, 13, '#b06b85', 'right', null);
     text(String(best), rx, py + 104, 26, '#fff', 'right');
     if (newBest) {
       ctx.save();
@@ -1600,8 +1743,23 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Share card: a 1080x1350 image of Mochi splatted on a dango, with the score
+  // Share card (1080x1350). Built to be read in a chat thumbnail:
+  // one big challenge ("BEAT MY 26"), a funny Mochi, and a clear "play free" call to action.
   // ---------------------------------------------------------------------------
+  function drawMedal(x, y, r, m) {
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 2, x, y, r);
+    g.addColorStop(0, m.c1); g.addColorStop(1, m.c2);
+    // ribbon
+    ctx.fillStyle = '#ff6f91';
+    ctx.beginPath(); ctx.moveTo(x - r * 0.7, y - r * 0.4); ctx.lineTo(x - r * 0.25, y - r * 1.5); ctx.lineTo(x + r * 0.05, y - r * 1.5); ctx.lineTo(x - r * 0.2, y - r * 0.5); ctx.fill();
+    ctx.fillStyle = '#7ac7ff';
+    ctx.beginPath(); ctx.moveTo(x + r * 0.7, y - r * 0.4); ctx.lineTo(x + r * 0.25, y - r * 1.5); ctx.lineTo(x - r * 0.05, y - r * 1.5); ctx.lineTo(x + r * 0.2, y - r * 0.5); ctx.fill();
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
+    text(m.name, x, y + 1, r * 0.42, '#fff', 'center', '#3a2a3f');
+  }
+
   function makeShareCanvas() {
     const CW = 360, CH = 450, k = 3;
     const cv = document.createElement('canvas');
@@ -1609,52 +1767,85 @@
     const prev = ctx;
     ctx = cv.getContext('2d');
     ctx.scale(k, k);
+    const cx = CW / 2;
     try {
       const sky = skyAt(score);
       const g = ctx.createLinearGradient(0, 0, 0, CH);
       g.addColorStop(0, sky.top); g.addColorStop(1, sky.bot);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, CW, CH);
-      for (let i = 0; i < 18; i++) drawPetal((i * 97) % CW, (i * 61) % 300 + 20, 4 + (i % 3), i, 'rgba(255,183,206,0.8)');
+      for (let i = 0; i < 22; i++) drawPetal((i * 97 + 13) % CW, (i * 61) % 380 + 10, 4 + (i % 3), i, 'rgba(255,190,212,0.85)');
 
-      // sand
-      ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, CH - 66, CW, 6);
-      ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, CH - 60, CW, 60);
+      // logo + mode pill
+      text('Mochi', cx - 4, 30, 26, '#fff8f0', 'right');
+      text('HOP', cx + 4, 30, 26, '#ff8fb3', 'left');
+      const pill = mode === 'daily' ? `DAILY #${dailyNumber(runDate)} · ${prettyDate(runDate).toUpperCase()}` : 'ENDLESS MODE';
+      ctx.font = '900 12px "Trebuchet MS", Verdana, sans-serif';
+      const pw = ctx.measureText(pill).width + 26;
+      ctx.fillStyle = mode === 'daily' ? '#9b7bff' : 'rgba(58,42,63,0.6)';
+      roundRect(cx - pw / 2, 50, pw, 22, 11); ctx.fill();
+      text(pill, cx, 62, 12, '#fff', 'center', null);
 
-      text('Mochi', CW / 2, 50, 44, '#fff8f0');
-      text('HOP', CW / 2, 88, 30, '#ff8fb3');
-
-      // a skewer with Mochi stuck to it
-      const sx = 238, tipY = 170;
-      drawStick(sx, tipY, CH - 52, false);
-      for (let i = 2; i >= 0; i--) drawBall(i, sx, tipY + TIP + DANGO_R - 4 + i * DANGO_STEP);
-      drawMochi(sx - DANGO_R - 10, 232, 1.9, SKINS[skinIndex], { dead: true, sx: 0.66, sy: 1.3, spin: 0 });
-
-      // score bubble
-      ctx.fillStyle = 'rgba(58,42,63,0.9)';
-      roundRect(24, 142, 150, 120, 20); ctx.fill();
-      ctx.fillStyle = '#fff6ea';
-      roundRect(24, 136, 150, 120, 20); ctx.fill();
-      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
-      text(mode === 'daily' ? `DAILY ${prettyDate(save.daily.date).toUpperCase()}` : 'I SCORED', 99, 158, 13, '#b06b85', 'center', null);
-      text(String(score), 99, 200, 52, '#fff');
+      // headline: the challenge
+      text('BEAT MY', cx, 104, 26, '#fff');
+      text(String(score), cx, 166, 88, '#fff');
       const m = medalFor(score);
-      text(m ? `${m.name} MEDAL` : `${runPetals} petal${runPetals === 1 ? '' : 's'}`, 99, 238, 13, m ? m.c2 : '#b06b85', 'center', null);
+      if (m) drawMedal(cx + 112, 172, 26, m);
 
-      text('Can you beat me?', CW / 2, 352, 24, '#fff');
-      text("Don't get skewered!", CW / 2, 378, 14, '#ffe3ee');
-      text('Play Mochi Hop', CW / 2, CH - 28, 18, '#ff8fb3');
+      // scene: a skewer with Mochi splatted on it, stats on the left
+      const sx = 268, tipY = 236, ground = 382;
+      ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, ground - 4, CW, 6);
+      ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, ground + 2, CW, CH - ground);
+      drawStick(sx, tipY, ground + 10, false);
+      for (let i = 2; i >= 0; i--) drawBall(i, sx, tipY + TIP + DANGO_R - 4 + i * DANGO_STEP);
+      drawMochi(sx - DANGO_R - 18, 292, 2.1, SKINS[skinIndex], { dead: true, sx: 0.66, sy: 1.3, spin: 0 });
+
+      const stats = [];
+      stats.push(['petal', `${caught} petal${caught === 1 ? '' : 's'}`]);
+      stats.push(['star', `${nearCount} close call${nearCount === 1 ? '' : 's'}`]);
+      if (mode === 'daily' && save.daily.streak > 1) stats.push(['fire', `${save.daily.streak} day streak`]);
+      stats.forEach(([icon, label], i) => {
+        const y = 262 + i * 34;
+        ctx.fillStyle = 'rgba(58,42,63,0.45)';
+        roundRect(18, y - 14, 150, 28, 14); ctx.fill();
+        if (icon === 'petal') drawSakura(34, y, 9, 0);
+        else if (icon === 'star') { ctx.fillStyle = '#fff3a0'; ctx.save(); ctx.translate(34, y); ctx.rotate(0.6); ctx.fillRect(-6, -6, 12, 12); ctx.restore(); }
+        else { ctx.fillStyle = '#ff9f43'; ctx.beginPath(); ctx.arc(34, y + 2, 7, 0, Math.PI * 2); ctx.fill(); }
+        text(label, 50, y + 1, 14, '#fff', 'left', null);
+      });
+
+      // call to action
+      ctx.fillStyle = 'rgba(58,42,63,0.9)';
+      roundRect(cx - 130, 401, 260, 38, 19); ctx.fill();
+      ctx.fillStyle = '#ff7aa2';
+      roundRect(cx - 130, 397, 260, 38, 19); ctx.fill();
+      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
+      text('Tap the link · play free', cx, 417, 17, '#fff');
     } finally {
       ctx = prev;
     }
     return cv;
   }
 
+  function challengeLink() {
+    const q = mode === 'daily' ? `?c=${runDate}&s=${score}` : `?s=${score}`;
+    return SHARE_URL + q;
+  }
+
+  function shareText() {
+    const m = medalFor(score);
+    const medal = m ? { BRONZE: ' 🥉', SILVER: ' 🥈', GOLD: ' 🥇', JADE: ' 💚' }[m.name] : '';
+    const stats = `🌸 ${caught}  ✨ ${nearCount} close call${nearCount === 1 ? '' : 's'}`;
+    if (mode === 'daily') {
+      const streak = save.daily.streak > 1 ? `  🔥 ${save.daily.streak}` : '';
+      return `🍡 Mochi Hop Daily #${dailyNumber(runDate)}: ${score}${medal}\n${stats}${streak}\nSame skewers for everyone today. Beat me 👉 ${challengeLink()}`;
+    }
+    return `🍡 I scored ${score}${medal} in Mochi Hop!\n${stats}\nBeat me 👉 ${challengeLink()}`;
+  }
+
   function shareScore() {
     const cv = makeShareCanvas();
-    const msg = mode === 'daily'
-      ? `I scored ${score} on the Mochi Hop daily challenge (${prettyDate(save.daily.date)})! Can you beat me?`
-      : `I scored ${score} in Mochi Hop! Can you beat me?`;
+    const msg = shareText();
     const dataUrl = cv.toDataURL('image/png');
     try {
       if (native && native.shareImage) { native.shareImage(dataUrl.split(',')[1], msg); return; }
@@ -1666,6 +1857,7 @@
           await navigator.share({ files: [file], text: msg });
           return;
         }
+        if (navigator.share) { await navigator.share({ text: msg }); return; }
       } catch (e) { /* fall through to download */ }
       const a = document.createElement('a');
       a.href = dataUrl; a.download = 'mochi-hop.png';
@@ -1681,7 +1873,8 @@
     text(String(score), 0, 0, 56, '#fff');
     ctx.restore();
     if (runPetals > 0) petalCounter(26, 36 + topInset, runPetals);
-    if (mode === 'daily') text('DAILY', W / 2, 112 + topInset, 13, '#e3d6ff');
+    if (target > 0) text(score > target ? `BEAT ${target}!` : `TARGET ${target}`, W / 2, 112 + topInset, 14, score > target ? '#8ff0b4' : '#ffe36e');
+    else if (mode === 'daily') text(`DAILY #${dailyNumber(runDate)}`, W / 2, 112 + topInset, 13, '#e3d6ff');
   }
 
   function draw() {
@@ -1740,6 +1933,7 @@
     initAudio();
     if (paused) { paused = false; last = performance.now(); return; }
 
+    if (state === 'title' && missionsOpen) { missionsOpen = false; sfx.click(); return; }
     if (state === 'title' || state === 'over') {
       if (hitTest('mute', x, y)) {
         save.muted = !save.muted;
@@ -1757,12 +1951,25 @@
     }
 
     if (state === 'title') {
+      if (hitTest('missions', x, y)) {
+        missionsOpen = true;
+        sfx.click();
+        return;
+      }
       if (hitTest('left', x, y)) return changeSkin(-1);
       if (hitTest('right', x, y)) return changeSkin(1);
       const skin = SKINS[skinIndex];
       if (hitTest('daily', x, y)) {
         if (!save.unlocked.includes(skin.id)) { uiShake = 1; sfx.nope(); return; }
         mode = 'daily';
+        if (challenge) {
+          runDate = challenge.date || '';
+          if (!challenge.date) mode = 'classic';
+          target = challenge.score;
+        } else {
+          runDate = '';
+          target = 0;
+        }
         resetRun();
         sfx.click();
         setState('ready');
@@ -1789,6 +1996,7 @@
         return;
       }
       mode = 'classic';
+      target = 0;
       resetRun();
       sfx.click();
       // Returning players skip the "Get Ready" hint.
@@ -1864,6 +2072,6 @@
   window.__mochi = {
     get state() { return state; }, get score() { return score; }, get W() { return W; },
     mochi, pipes: () => pipes, save, ballCenters, COL_W, DANGO_R,
-    get mode() { return mode; }, get near() { return nearCount; }, makeShareCanvas,
+    get mode() { return mode; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
   };
 })();

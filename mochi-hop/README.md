@@ -33,8 +33,12 @@ mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its 
   best score and a day streak.
 - **Missions:** three goals at a time (such as "3 close calls in one run" or "Score 10
   without a petal") that pay out petals and are replaced once completed.
-- **Share card:** one tap on the game-over screen makes a 1080×1350 image of Mochi
-  splatted on a dango with your score and medal, then opens the Android share sheet.
+- **Challenge sharing:** CHALLENGE on the game-over screen sends a "BEAT MY 26" card plus
+  a short emoji summary and a link. The link opens the free web version
+  (`https://bmayston.github.io/zen-garden/play/?c=<date>&s=<score>`) straight into the same
+  daily course with your score as the target, so friends can play without installing.
+  The web version is published by `.github/workflows/mochi-hop-web.yml` (enable GitHub Pages
+  with source "GitHub Actions" once).
 - **Difficulty in clear steps:** very gentle for the first 3 gaps, then harder at 3, 10,
   25 and 50 points.
 - **Sound:** a signature hop "boing", a score chime that climbs the scale with each gap,
