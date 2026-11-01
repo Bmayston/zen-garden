@@ -422,7 +422,7 @@
         case 'petals_run': v = Math.max(v, run.petals); break;
         case 'near_run': v = Math.max(v, run.near); break;
         case 'nopetal_run': v = Math.max(v, run.petalFreeScore); break;
-        case 'splats_total': v += 1; break;
+        case 'splats_total': if (!run.quit) v += 1; break;
         case 'petals_total': v += run.petals; break;
         case 'near_total': v += run.near; break;
         case 'runs_total': v += 1; break;
@@ -619,6 +619,7 @@
   let state = 'title';      // title | ready | play | dying | over
   let stateT = 0;
   let paused = false;
+  let countdown = 0;          // 3-2-1 after resuming
   let score = 0;
   let runPetals = 0;
   let newBest = false;
@@ -763,7 +764,7 @@
     setState('dying');
   }
 
-  function endRun() {
+  function endRun(quit = false) {
     save.played++;
     store.set('played', save.played);
     if (mode === 'daily' && runDate === dateKey()) {
@@ -783,9 +784,10 @@
     }
     if (caught === 0) petalFreeScore = score;
     const t = save.totals;
-    t.splats++; t.runs++; t.petals += caught; t.near += nearCount; t.score += score;
+    if (!quit) t.splats++;
+    t.runs++; t.petals += caught; t.near += nearCount; t.score += score;
     store.set('totals', t);
-    missionPetals = applyMissions({ score, petals: caught, near: nearCount, petalFreeScore, daily: mode === 'daily' });
+    missionPetals = applyMissions({ score, petals: caught, near: nearCount, petalFreeScore, daily: mode === 'daily', quit });
     if (save.missions.some(m => m.lateDone)) { setTimeout(() => { sfx.mission(); haptic('click'); }, 350); }
     save.missions.forEach(m => { delete m.lateDone; });
     save.petals += runPetals + missionPetals;
@@ -1485,7 +1487,7 @@
 
   const titleY = () => Math.max(0, topInset - 16);
 
-  function drawMissions(x, y, w, compact) {
+  function drawMissions(x, y, w, compact, live = false) {
     const rowH = 26;
     const h = rowH * save.missions.length + 34;
     ctx.fillStyle = 'rgba(58,42,63,0.55)';
@@ -1503,13 +1505,14 @@
       }
       ctx.globalAlpha = (m.done && !compact) ? 1 : (m.done ? 0.6 : 1);
       text(missionText(d), x + 34, ry + 1, 13, '#fff', 'left', null);
-      if (m.isNew && !m.done) {
-        const tw = ctx.measureText(missionText(d)).width;
+      const tw = ctx.measureText(missionText(d)).width;
+      if (m.isNew && !m.done && 40 + tw + 32 < w - 72) {
         ctx.fillStyle = '#ff5f8f';
         roundRect(x + 40 + tw, ry - 8, 32, 16, 6); ctx.fill();
         text('NEW', x + 56 + tw, ry + 1, 10, '#fff', 'center', null);
       }
-      const right = m.done ? `+${d.reward}` : `${m.progress}/${d.n}`;
+      const shown = live ? Math.min(d.n, Math.max(m.progress, liveMissionValue(m, d))) : m.progress;
+      const right = m.done ? `+${d.reward}` : (live && shown >= d.n ? 'Done!' : `${shown}/${d.n}`);
       text(right, x + w - 30, ry + 1, 13, m.done ? '#ffe36e' : '#ffd3e2', 'right', null);
       drawSakura(x + w - 16, ry, 6, 0);
       ctx.globalAlpha = 1;
@@ -1875,6 +1878,71 @@
     if (runPetals > 0) petalCounter(26, 36 + topInset, runPetals);
     if (target > 0) text(score > target ? `BEAT ${target}!` : `TARGET ${target}`, W / 2, 112 + topInset, 14, score > target ? '#8ff0b4' : '#ffe36e');
     else if (mode === 'daily') text(`DAILY #${dailyNumber(runDate)}`, W / 2, 112 + topInset, 13, '#e3d6ff');
+    if (state === 'play' && !paused) {
+      const bx = W - 34, by = 36 + topInset;
+      roundIcon('pause', bx, by);
+      ui.pause = { x: bx - 30, y: by - 30, w: 60, h: 60 };   // generous touch target
+      ctx.fillRect(bx - 7, by - 8, 5, 16);
+      ctx.fillRect(bx + 2, by - 8, 5, 16);
+    }
+  }
+
+  function drawPause() {
+    const cx = W / 2;
+    ctx.fillStyle = 'rgba(29,27,47,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    for (const k of ['pause']) delete ui[k];
+    const ty = topInset * 0.6;
+    text('Paused', cx, 92 + ty, 44, '#fff');
+
+    // current run
+    const pw = Math.min(290, W - 30), px = cx - pw / 2, py = 128 + ty;
+    const ch = 112;
+    ctx.fillStyle = 'rgba(58,42,63,0.9)';
+    roundRect(px, py + 5, pw, ch, 18); ctx.fill();
+    ctx.fillStyle = '#fff6ea';
+    roundRect(px, py, pw, ch, 18); ctx.fill();
+    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 3; ctx.stroke();
+    text('SCORE', px + 24, py + 24, 13, '#b06b85', 'left', null);
+    text(String(score), px + 24, py + 58, 40, '#fff', 'left');
+    const best = target > 0 ? target : (mode === 'daily' ? save.daily.best : save.best);
+    const bestLabel = target > 0 ? 'TO BEAT' : (mode === 'daily' ? `DAILY #${dailyNumber(runDate)} BEST` : 'BEST');
+    text(bestLabel, px + pw - 20, py + 24, 13, '#b06b85', 'right', null);
+    text(String(best), px + pw - 20, py + 52, 26, '#fff', 'right');
+    // run stats row
+    ctx.fillStyle = 'rgba(176,107,133,0.25)';
+    ctx.fillRect(px + 16, py + 82, pw - 32, 1.5);
+    drawSakura(px + 30, py + 97, 7, 0);
+    text(`${caught} petal${caught === 1 ? '' : 's'}`, px + 44, py + 98, 13, '#b06b85', 'left', null);
+    ctx.fillStyle = '#e0b100';
+    ctx.save(); ctx.translate(px + pw / 2 + 14, py + 97); ctx.rotate(0.6); ctx.fillRect(-4, -4, 8, 8); ctx.restore();
+    text(`${nearCount} close call${nearCount === 1 ? '' : 's'}`, px + pw / 2 + 26, py + 98, 13, '#b06b85', 'left', null);
+
+    // live mission progress
+    ctx.fillStyle = '#3d2c44';
+    roundRect(px, py + ch + 16, pw, 26 * save.missions.length + 34, 14); ctx.fill();
+    const mh = drawMissions(px, py + ch + 16, pw, false, true);
+
+    const by = py + ch + 16 + mh + 44;
+    button('resume', cx, by, 190, 56, 'RESUME', '#ff7aa2');
+    button('quit', cx, by + 66, 160, 42, 'END RUN', '#9a8aa0');
+    text('Petals and progress so far are kept', cx, by + 102, 11, '#ffe3ee', 'center', null);
+  }
+
+  function resumeGame() {
+    paused = false;
+    countdown = 1.5;
+    last = performance.now();
+    if (audio && !save.muted) audio.resume();
+    sfx.click();
+  }
+
+  function quitRun() {
+    paused = false;
+    countdown = 0;
+    endRun(true);
+    sfx.click();
+    setState('title');
   }
 
   function draw() {
@@ -1896,14 +1964,19 @@
 
     if (state === 'title') drawTitle();
     else if (state === 'ready') drawReady();
-    else if (state === 'play' || state === 'dying') drawHud();
+    else if ((state === 'play' || state === 'dying') && !paused) drawHud();
     else if (state === 'over') drawOver();
 
-    if (paused) {
-      ctx.fillStyle = 'rgba(29,27,47,0.55)';
-      ctx.fillRect(0, 0, W, H);
-      text('Paused', W / 2, H * 0.4, 44, '#fff');
-      text('Tap to continue', W / 2, H * 0.4 + 50, 20, '#fff');
+    if (paused) drawPause();
+    else if (countdown > 0) {
+      const n = Math.ceil(countdown / 0.5);
+      const f = (countdown % 0.5) / 0.5;
+      ctx.save();
+      ctx.translate(W / 2, H * 0.42);
+      ctx.scale(1 + f * 0.4, 1 + f * 0.4);
+      ctx.globalAlpha = 0.4 + 0.6 * f;
+      text(String(n), 0, 0, 72, '#fff');
+      ctx.restore();
     }
   }
 
@@ -1931,7 +2004,18 @@
 
   function onTap(x, y) {
     initAudio();
-    if (paused) { paused = false; last = performance.now(); return; }
+    if (paused) {
+      if (hitTest('resume', x, y)) resumeGame();
+      else if (hitTest('quit', x, y)) quitRun();
+      return;
+    }
+    if (countdown > 0) return;
+    if (state === 'play' && hitTest('pause', x, y)) {
+      paused = true;
+      sfx.click();
+      haptic('tick');
+      return;
+    }
 
     if (state === 'title' && missionsOpen) { missionsOpen = false; sfx.click(); return; }
     if (state === 'title' || state === 'over') {
@@ -2027,6 +2111,8 @@
       e.preventDefault();
       if (state === 'title') { onTap(W / 2, 446); return; }
       onTap(-1, -1);
+    } else if ((e.code === 'Escape' || e.code === 'KeyP') && state === 'play') {
+      if (paused) resumeGame(); else if (countdown <= 0) { paused = true; sfx.click(); }
     } else if (state === 'title' && e.code === 'ArrowLeft') changeSkin(-1);
     else if (state === 'title' && e.code === 'ArrowRight') changeSkin(1);
   });
@@ -2038,7 +2124,7 @@
 
   // Called by the Android back button.
   window.mochiBack = function () {
-    if (paused) return false;
+    if (paused) { resumeGame(); return true; }
     if (state === 'play') { paused = true; return true; }
     if (state === 'ready' || state === 'over' || state === 'dying') { setState('title'); return true; }
     return false;
@@ -2055,7 +2141,10 @@
     let dt = (now - last) / 1000;
     last = now;
     if (dt > 0.1) dt = 0.1;
-    if (!paused) {
+    if (countdown > 0 && !paused) {
+      countdown -= dt;
+      if (countdown <= 0) { countdown = 0; acc = 0; }
+    } else if (!paused) {
       acc += dt;
       while (acc >= STEP) { update(STEP); acc -= STEP; }
     }
@@ -2072,6 +2161,6 @@
   window.__mochi = {
     get state() { return state; }, get score() { return score; }, get W() { return W; },
     mochi, pipes: () => pipes, save, ballCenters, COL_W, DANGO_R,
-    get mode() { return mode; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
+    get mode() { return mode; }, get paused() { return paused; }, get countdown() { return countdown; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
   };
 })();

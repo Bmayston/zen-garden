@@ -39,6 +39,10 @@ mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its 
   daily course with your score as the target, so friends can play without installing.
   The web version is published by `.github/workflows/mochi-hop-web.yml` (enable GitHub Pages
   with source "GitHub Actions" once).
+- **Pause:** a pause button (top right) during a run shows your score, petals, close calls
+  and live mission progress, with RESUME (3-2-1 countdown) or END RUN back to the menu.
+  Ending a run keeps petals and progress but doesn't count as a splat. The game also pauses
+  itself when you leave the app; Android Back resumes from the pause screen.
 - **Difficulty in clear steps:** very gentle for the first 3 gaps, then harder at 3, 10,
   25 and 50 points.
 - **Sound:** a signature hop "boing", a score chime that climbs the scale with each gap,
