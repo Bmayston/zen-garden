@@ -7,7 +7,9 @@ being sticky, splats onto it, slides down and flops flat on the sand.
 
 ## Brand
 
-The title screen, share card, link preview and store art all use the **Mochi Hop logo** (`store/brand/`),
+The game opens on a **logo splash** (tap to skip) that hands over to a clean home screen where Mochi
+is the hero on its cushion, with illustrated Missions and Friends cards. The splash, share card, link
+preview and store art all use the **Mochi Hop logo** (`store/brand/`),
 the **Fredoka** typeface and the logo's plum, cream and pink palette. See [store/README.md](store/README.md)
 for the brand kit and every Google Play asset.
 

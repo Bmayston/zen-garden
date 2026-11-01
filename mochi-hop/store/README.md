@@ -12,7 +12,7 @@ python3 mochi-hop/tools/cut-logo.py store/brand/logo-original.png store/brand/lo
 |---|---|---|
 | App icon | `play-icon-512.png` | 512 × 512 PNG, full square (Play applies the mask) |
 | Feature graphic | `feature-graphic-1024x500.png` | 1024 × 500, logo centred, nothing key near the edges |
-| Phone screenshots | `screenshots/*.jpg` | 1080 × 1920, upload in numbered order |
+| Phone screenshots | `screenshots/*.jpg` | six 1080 × 1920 images, upload in numbered order |
 | Store text | `listing.md` | title, short and full description |
 
 ## Brand

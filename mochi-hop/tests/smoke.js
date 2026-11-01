@@ -20,14 +20,26 @@ const check = (name, ok, detail = '') => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  const g = (fn) => page.evaluate(fn);
+  const g = (fn, arg) => page.evaluate(fn, arg);
   const state = () => g(() => window.__mochi.state);
+  // click a button by its id in the game's hit-test table
+  const tap = async (id) => {
+    const r = await g((k) => window.__mochi.ui[k], id);
+    if (!r) throw new Error('no button ' + id + ' in ' + JSON.stringify(await g(() => [window.__mochi.state, Object.keys(window.__mochi.ui)])));
+    await page.mouse.click((r.x + r.w / 2) * S, (r.y + r.h / 2) * S);
+  };
+  const skipSplash = async () => {
+    await page.mouse.click(VW / 2, V(320));
+    for (let i = 0; i < 100 && (await state()) !== 'title'; i++) await page.waitForTimeout(20);
+    await page.waitForTimeout(80);
+  };
   const fresh = async (url = URL) => {
     await page.goto(url);
     await g(() => localStorage.clear());
     await page.goto(url);
     await page.waitForFunction(() => window.__mochi);
     await page.waitForTimeout(200);
+    await skipSplash();
   };
   const waitFor = async (want, ms = 3000) => {
     const t0 = Date.now();
@@ -50,13 +62,18 @@ const check = (name, ok, detail = '') => {
   };
   const crash = async () => { await g(() => { window.__mochi.mochi.y = 640; }); return waitFor('over'); };
   const startClassic = async () => {
-    await page.mouse.click(VW / 2, V(420));
+    await tap('play');
     if ((await state()) === 'ready') await page.mouse.click(VW / 2, V(500));
   };
 
-  // 1. Loads cleanly
+  // 1. Loads cleanly: splash first, then the menu
+  await page.goto(URL);
+  await page.waitForFunction(() => window.__mochi);
+  check('opens on the logo splash', (await state()) === 'splash');
+  await page.waitForTimeout(2700);
+  check('splash hands over to the menu by itself', (await state()) === 'title');
   await fresh();
-  check('loads to the title screen', (await state()) === 'title');
+  check('tapping skips the splash to the menu', (await state()) === 'title');
   await g(() => window.mochiAssetsReady());
   check('brand font (Fredoka) and logo load', await g(() => document.fonts.check('700 20px Fredoka') && !!window.MOCHI_LOGO));
   check('share card exports with the logo on it (canvas not tainted)', await g(() => { try { return window.__mochi.makeShareCanvas().toDataURL().length > 10000; } catch (e) { return false; } }));
@@ -87,7 +104,7 @@ const check = (name, ok, detail = '') => {
     clearInterval(keep);
     return g(() => window.__mochi.pipes().map((q) => [Math.round(q.baseY), q.golden, !!q.petal]));
   };
-  await page.mouse.click(VW / 2, V(476));
+  await tap('daily');
   await page.mouse.click(VW / 2, V(500));
   const a = await dailyLayout();
   await crash(); await page.waitForTimeout(500);
@@ -98,7 +115,7 @@ const check = (name, ok, detail = '') => {
 
   // 6. Missions and weekly progress survive a reload
   const before = await g(() => JSON.stringify([window.__mochi.save.missions, window.__mochi.save.weekly]));
-  await page.reload(); await page.waitForFunction(() => window.__mochi);
+  await page.reload(); await page.waitForFunction(() => window.__mochi); await skipSplash();
   const after = await g(() => JSON.stringify([window.__mochi.save.missions, window.__mochi.save.weekly]));
   check('missions and weekly progress persist across reloads', before === after);
 
@@ -128,7 +145,7 @@ const check = (name, ok, detail = '') => {
 
   // 9. Challenge links set a target on the same daily course
   await fresh(URL + '?c=2026-11-01&s=26');
-  await page.mouse.click(VW / 2, V(476));
+  await tap('daily');
   await page.mouse.click(VW / 2, V(500));
   const ch = await g(() => [window.__mochi.mode, window.__mochi.target]);
   check('challenge link starts a daily run with target 26', ch[0] === 'daily' && ch[1] === 26, JSON.stringify(ch));
@@ -136,14 +153,23 @@ const check = (name, ok, detail = '') => {
 
   // 10. Settings persist
   await fresh();
-  await page.mouse.click(V((await g(() => window.__mochi.W)) - 84), V(36));
+  await tap('settings');
   await page.waitForTimeout(100);
   const music0 = await g(() => window.__mochi.save.settings.music);
   // Music is the first row: panel top (120) + header (72) + half a row (25)
   await page.mouse.click(VW / 2, V(120 + 72 + 25));
   await page.waitForTimeout(100);
-  await page.reload(); await page.waitForFunction(() => window.__mochi);
+  await page.reload(); await page.waitForFunction(() => window.__mochi); await skipSplash();
   check('settings change is saved', (await g(() => window.__mochi.save.settings.music)) !== music0);
+
+  // 11. Missions board and friends album open and close
+  await tap('missions'); await page.waitForTimeout(100);
+  check('missions board opens', !!(await g(() => window.__mochi.ui.closeMissions)));
+  await tap('closeMissions'); await page.waitForTimeout(100);
+  await tap('book'); await page.waitForTimeout(100);
+  check('friends album opens', !!(await g(() => window.__mochi.ui.closeBook)));
+  await tap('cell1'); await page.waitForTimeout(100);
+  check('tapping a friend in the album closes it back to the menu', (await state()) === 'title' && (await g(() => window.__mochi.save.skin)) === 'classic');
 
   check('no JavaScript errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

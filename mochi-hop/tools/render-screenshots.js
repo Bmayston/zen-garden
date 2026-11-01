@@ -15,6 +15,7 @@ const SHOTS = [
   { file: '3-friends', title: 'Collect 13 friends', sub: 'Seasonal friends too' },
   { file: '4-challenge', title: 'Challenge friends', sub: 'Same course for everyone daily' },
   { file: '5-night', title: 'Golden gaps & night winds', sub: 'It gets wilder the further you go' },
+  { file: '6-missions', title: 'Daily & weekly missions', sub: 'Earn petals, unlock friends' },
 ];
 
 (async () => {
@@ -28,10 +29,13 @@ const SHOTS = [
     await page.goto(URL);
     await page.waitForFunction(() => window.__mochi && window.mochiAssetsReady);
     await g(() => window.mochiAssetsReady());
-    await page.waitForTimeout(300);
+    await page.mouse.click(VW / 2, V(320));
+    for (let i = 0; i < 100 && (await g(() => window.__mochi.state)) !== 'title'; i++) await page.waitForTimeout(20);
+    await page.waitForTimeout(500);
   };
+  const tap = async (id) => { const r = await g((k) => window.__mochi.ui[k], id); await page.mouse.click((r.x + r.w / 2) * VH / 640, (r.y + r.h / 2) * VH / 640); };
   const base = { played: 5, tips: { petal: true, close: true, golden: true, wind: true }, best: 34, petals: 182 };
-  const startPlay = async () => { await page.mouse.click(VW / 2, V(420)); await page.waitForTimeout(80); };
+  const startPlay = async () => { await tap('play'); await page.waitForTimeout(80); };
   const fly = async (until, ms = 30000) => {
     const t0 = Date.now();
     while (Date.now() - t0 < ms) {
@@ -60,9 +64,7 @@ const SHOTS = [
 
   // 3. friends book
   await boot(Object.assign({}, base, { unlocked: ['classic', 'sakura', 'yuzu', 'matcha', 'kinako', 'sesame', 'ube', 'strawberry', 'pumpkin'] }));
-  const W = await g(() => window.__mochi.W);
-  const pw2 = Math.min(144, W / 2 - 14);
-  await page.mouse.click(V(W / 2 + pw2 / 2 + 5), V(544));
+  await tap('book');
   await page.waitForTimeout(300);
   shots[2] = await page.screenshot();
 
@@ -70,8 +72,10 @@ const SHOTS = [
   await boot(base);
   await page.goto(URL + '?c=2026-11-01&s=18');
   await page.waitForFunction(() => window.__mochi && window.mochiAssetsReady); await g(() => window.mochiAssetsReady());
-  await page.waitForTimeout(200);
-  await page.mouse.click(VW / 2, V(476)); await page.waitForTimeout(60); await page.mouse.click(VW / 2, V(560));
+  await page.mouse.click(VW / 2, V(320));
+  for (let i = 0; i < 100 && (await g(() => window.__mochi.state)) !== 'title'; i++) await page.waitForTimeout(20);
+  await page.waitForTimeout(300);
+  await tap('daily'); await page.waitForTimeout(60); await page.mouse.click(VW / 2, V(560));
   await fly(async (s) => s.sc >= 22);
   await g(() => { window.__mochi.mochi.y = 640; });
   for (let i = 0; i < 300 && (await g(() => window.__mochi.state)) !== 'over'; i++) await page.waitForTimeout(10);
@@ -84,6 +88,12 @@ const SHOTS = [
   await g(() => { window.__mochi.score = 29; });
   await fly(async (s) => s.sc >= 31 && (await g(() => window.__mochi.pipes().some((q) => q.x > 120 && q.x < 330 && (q.golden || q.bobAmp)))), 40000);
   shots[4] = await page.screenshot();
+
+  // 6. missions board
+  await boot(Object.assign({}, base, { missions: [{ id: 'score_run:15', progress: 11, done: false }, { id: 'near_run:2', progress: 1, done: false }, { id: 'petals_total:30', progress: 18, done: false, isNew: true }] }));
+  await tap('missions');
+  await page.waitForTimeout(300);
+  shots[5] = await page.screenshot();
 
   // compose marketing frames
   const comp = await browser.newPage({ viewport: { width: 400, height: 400 } });
