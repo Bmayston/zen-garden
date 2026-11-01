@@ -11,7 +11,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Plays the real game in headless Chromium (see mochi-hop/tests/smoke.js)
+  game-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mochi-hop/tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Run smoke tests
+        run: node smoke.js
+
   build:
+    needs: game-tests
     runs-on: ubuntu-latest
     defaults:
       run:

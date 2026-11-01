@@ -32,6 +32,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Smoke-test the game before publishing
+        working-directory: mochi-hop/tests
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node smoke.js
       - name: Assemble site
         run: |
           mkdir -p _site/play

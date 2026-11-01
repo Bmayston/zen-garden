@@ -1,0 +1,16 @@
+{
+  "name": "Mochi Hop",
+  "short_name": "Mochi Hop",
+  "description": "Hop Mochi between dango skewers. One tap, endless fun.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#8fd3ff",
+  "theme_color": "#ffb3cc",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

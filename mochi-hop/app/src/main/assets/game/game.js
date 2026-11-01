@@ -69,13 +69,28 @@
   // ---------------------------------------------------------------------------
   // Friends (skins). Every friend keeps Mochi's signature sprout.
   // ---------------------------------------------------------------------------
+  // pitch: hop "boing" pitch multiplier. splat: colour of the splat blobs.
+  // season: [firstMonth, lastMonth] (1-12) when a seasonal friend can be unlocked.
   const SKINS = [
-    { id: 'classic', name: 'Mochi',  cost: 0,   body: '#fff8f0', shade: '#efd9c6', cheek: '#ff9fb2', acc: null },
-    { id: 'sakura',  name: 'Sakura', cost: 25,  body: '#ffd9e4', shade: '#f4b2c6', cheek: '#ff6f91', acc: 'blossom' },
-    { id: 'matcha',  name: 'Matcha', cost: 60,  body: '#cfe8ab', shade: '#a8cc80', cheek: '#ff9e9e', acc: 'tea' },
-    { id: 'ube',     name: 'Ube',    cost: 120, body: '#d4bdf5', shade: '#ab8ed8', cheek: '#ff9ed2', acc: 'bow' },
-    { id: 'golden',  name: 'Golden', cost: 250, body: '#ffe37e', shade: '#efbf3d', cheek: '#ff9a6b', acc: 'crown' },
+    { id: 'classic',    name: 'Mochi',      cost: 0,   body: '#fff8f0', shade: '#efd9c6', cheek: '#ff9fb2', acc: null,         pitch: 1 },
+    { id: 'sakura',     name: 'Sakura',     cost: 25,  body: '#ffd9e4', shade: '#f4b2c6', cheek: '#ff6f91', acc: 'blossom',    pitch: 1.12 },
+    { id: 'yuzu',       name: 'Yuzu',       cost: 40,  body: '#ffe9a8', shade: '#f5c95a', cheek: '#ff9a6b', acc: 'leaf',       pitch: 1.2 },
+    { id: 'matcha',     name: 'Matcha',     cost: 60,  body: '#cfe8ab', shade: '#a8cc80', cheek: '#ff9e9e', acc: 'cup',        pitch: 0.95 },
+    { id: 'kinako',     name: 'Kinako',     cost: 80,  body: '#f3dcb0', shade: '#d8b77d', cheek: '#ff9e8a', acc: null,         pitch: 0.9,  pattern: 'dust' },
+    { id: 'sesame',     name: 'Sesame',     cost: 100, body: '#5c5660', shade: '#433e47', cheek: '#ff8fb0', acc: null,         pitch: 0.78, pattern: 'seeds', eye: '#fff', splat: '#2e2a31' },
+    { id: 'ube',        name: 'Ube',        cost: 120, body: '#d4bdf5', shade: '#ab8ed8', cheek: '#ff9ed2', acc: 'bow',        pitch: 1.05 },
+    { id: 'strawberry', name: 'Ichigo',     cost: 160, body: '#fff3f3', shade: '#f2d2d2', cheek: '#ff7f96', acc: 'strawberry', pitch: 1.1,  splat: '#ff5c7a' },
+    { id: 'sora',       name: 'Sora',       cost: 200, body: '#cfe9ff', shade: '#9ccaf0', cheek: '#ff9fc4', acc: 'cloud',      pitch: 1.25 },
+    { id: 'golden',     name: 'Golden',     cost: 250, body: '#ffe37e', shade: '#efbf3d', cheek: '#ff9a6b', acc: 'crown',      pitch: 1.0,  splat: '#ffd23f' },
+    { id: 'pumpkin',    name: 'Kabocha',    cost: 50,  body: '#ffb35c', shade: '#e98a2e', cheek: '#ff7a6b', acc: 'stem',       pitch: 0.85, pattern: 'ribs', season: [10, 11], seasonName: 'Oct–Nov' },
+    { id: 'snow',       name: 'Yuki',       cost: 50,  body: '#f4fbff', shade: '#cfe3f2', cheek: '#ffa8c0', acc: 'scarf',      pitch: 1.3,  splat: '#e6f4ff', season: [12, 2], seasonName: 'Dec–Feb' },
+    { id: 'hanami',     name: 'Hanami',     cost: 50,  body: '#fff8f0', shade: '#efd9c6', cheek: '#ff9fb2', acc: 'blossom',    pitch: 1.15, pattern: 'bands', season: [3, 5], seasonName: 'Mar–May' },
   ];
+  function inSeason(skin, d = new Date()) {
+    if (!skin.season) return true;
+    const m = d.getMonth() + 1, [a, b] = skin.season;
+    return a <= b ? (m >= a && m <= b) : (m >= a || m <= b);
+  }
 
   const save = {
     best: store.get('best', 0),
@@ -88,7 +103,17 @@
     daily: store.get('daily', { date: '', best: 0, streak: 0, lastDate: '', runs: 0 }),
     missions: store.get('missions', null),
     totals: store.get('totals', { splats: 0, petals: 0, near: 0, runs: 0, score: 0 }),
+    settings: Object.assign({ music: 2, sfx: 3, reduced: false, lefty: false }, store.get('settings', {})),
+    tips: store.get('tips', {}),
+    weekly: store.get('weekly', null),
   };
+  const reducedMotion = () => save.settings.reduced;
+  const LEVELS = ['Off', 'Low', 'Medium', 'High'];
+  function applyVolumes() {
+    if (!audio) return;
+    sfxGain.gain.value = [0, 0.4, 0.75, 1][save.settings.sfx];
+    musicGain.gain.value = [0, 0.2, 0.38, 0.55][save.settings.music];
+  }
   let skinIndex = Math.max(0, SKINS.findIndex(s => s.id === save.skin));
 
   // ---------------------------------------------------------------------------
@@ -105,6 +130,7 @@
       musicGain = audio.createGain();
       musicGain.gain.value = 0.55;
       musicGain.connect(audio.destination);
+      applyVolumes();
       music.next = audio.currentTime + 0.2;
     } catch (e) { audio = null; }
   }
@@ -153,9 +179,10 @@
       const o = audio.createOscillator();
       const g = audio.createGain();
       o.type = 'sine';
-      o.frequency.setValueAtTime(300, t);
-      o.frequency.exponentialRampToValueAtTime(640, t + 0.06);
-      o.frequency.exponentialRampToValueAtTime(520, t + 0.14);
+      const k = (SKINS[skinIndex] && SKINS[skinIndex].pitch) || 1;
+      o.frequency.setValueAtTime(300 * k, t);
+      o.frequency.exponentialRampToValueAtTime(640 * k, t + 0.06);
+      o.frequency.exponentialRampToValueAtTime(520 * k, t + 0.14);
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(0.17, t + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
@@ -170,6 +197,9 @@
     },
     milestone() { [0, 5, 9, 12].forEach((s, i) => tone(noteHz(s + 12), noteHz(s + 12), 0.2, 'triangle', 0.1, i * 0.07)); },
     petal()  { tone(1568, 2093, 0.18, 'sine', 0.1); tone(2093, 2637, 0.2, 'sine', 0.07, 0.05); },
+    golden() { [0, 4, 7, 12, 16].forEach((s2, i) => tone(noteHz(s2 + 12), noteHz(s2 + 12), 0.12, 'triangle', 0.09, i * 0.04)); },
+    whoosh() { noise(0.9, 0.12, 500); },
+    medal()  { tone(1046, 1046, 0.1, 'triangle', 0.12); tone(1568, 1568, 0.3, 'sine', 0.1, 0.08); },
     close()  { tone(2637, 3520, 0.08, 'triangle', 0.07); tone(3136, 3951, 0.12, 'sine', 0.05, 0.05); },
     mission() { [7, 12, 16, 19].forEach((s, i) => tone(noteHz(s), noteHz(s), 0.16, 'triangle', 0.1, i * 0.06)); },
     // Squishy "bloop" splat
@@ -278,6 +308,12 @@
   // Public web version of the game (GitHub Pages). Shared links open here, so a
   // friend can play instantly in the browser with no install.
   const SHARE_URL = 'https://bmayston.github.io/zen-garden/play/';
+  // Fill in once the game is on Google Play; the web version then shows a "Get it on Google Play" button.
+  const PLAY_STORE_URL = '';
+  const isWeb = !native;
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+  window.addEventListener('appinstalled', () => { installPrompt = null; });
   const DAILY_EPOCH = Date.UTC(2026, 10, 1);   // 1 Nov 2026 = Daily #1
   function dailyNumber(key) {
     const [y, m, d] = key.split('-').map(Number);
@@ -348,10 +384,69 @@
       case 'runs_total': return `Play ${m.n} runs`;
       case 'score_total': return `Score ${m.n} points in total`;
       case 'daily_play': return 'Play the daily challenge';
+      case 'golden_total': return `Pass ${m.n} golden gaps`;
+      case 'daily_days': return `Play the daily on ${m.n} days`;
     }
     return '';
   }
-  const missionDef = id => MISSION_POOL.find(m => m.id === id);
+  const missionDef = id => MISSION_POOL.find(m => m.id === id) || WEEKLY_POOL.find(m => m.id === id);
+
+  // Weekly missions: three bigger goals that reset every Monday, plus a bonus for all three.
+  const WEEKLY_POOL = [
+    { type: 'score_total', n: 400, reward: 40 },
+    { type: 'near_total', n: 30, reward: 40 },
+    { type: 'petals_total', n: 60, reward: 40 },
+    { type: 'runs_total', n: 30, reward: 30 },
+    { type: 'score_run', n: 35, reward: 45 },
+    { type: 'golden_total', n: 5, reward: 45 },
+    { type: 'daily_days', n: 4, reward: 50 },
+  ].map(m => Object.assign(m, { id: `w:${m.type}:${m.n}` }));
+  const WEEKLY_BONUS = 60;
+  function weekKey(d = new Date()) {
+    const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    m.setDate(m.getDate() - ((m.getDay() + 6) % 7));   // back to Monday
+    return dateKey(m);
+  }
+  function refreshWeekly() {
+    const wk = weekKey();
+    if (save.weekly && save.weekly.week === wk && Array.isArray(save.weekly.list)) return;
+    const pool = WEEKLY_POOL.slice();
+    const list = [];
+    while (list.length < 3) list.push({ id: pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id, progress: 0, done: false });
+    save.weekly = { week: wk, list, days: [], bonus: false };
+    store.set('weekly', save.weekly);
+  }
+  function weeklyResetText() {
+    const [y, m, d] = save.weekly.week.split('-').map(Number);
+    const end = new Date(y, m - 1, d + 7);
+    const hrs = Math.max(0, Math.round((end - new Date()) / 3600000));
+    return hrs >= 48 ? `resets in ${Math.round(hrs / 24)} days` : `resets in ${hrs}h`;
+  }
+  function applyWeekly(run) {
+    refreshWeekly();
+    const wkl = save.weekly;
+    if (run.daily && run.date && !wkl.days.includes(run.date)) wkl.days.push(run.date);
+    let earned = 0;
+    for (const m of wkl.list) {
+      if (m.done) continue;
+      const d = missionDef(m.id);
+      let v = m.progress;
+      switch (d.type) {
+        case 'score_total': v += run.score; break;
+        case 'near_total': v += run.near; break;
+        case 'petals_total': v += run.petals; break;
+        case 'runs_total': v += 1; break;
+        case 'score_run': v = Math.max(v, run.score); break;
+        case 'golden_total': v += run.golden; break;
+        case 'daily_days': v = wkl.days.length; break;
+      }
+      m.progress = Math.min(v, d.n);
+      if (m.progress >= d.n) { m.done = true; m.lateDone = true; earned += d.reward; }
+    }
+    if (!wkl.bonus && wkl.list.every(m => m.done)) { wkl.bonus = true; earned += WEEKLY_BONUS; }
+    store.set('weekly', wkl);
+    return earned;
+  }
 
   function pickMission(excludeIds, excludeTypes = []) {
     let options = MISSION_POOL.filter(m => !excludeIds.includes(m.id) && !excludeTypes.includes(m.type));
@@ -514,7 +609,7 @@
   function buildSprites() {
     const px = Math.max(1, scale);
     const size = Math.ceil((DANGO_R * 2 + 6) * px);
-    dangoSprites = DANGO_COLORS.map(c => {
+    dangoSprites = DANGO_COLORS.concat([{ base: '#ffd84a', dark: '#d9a10f', light: '#fff6c2' }]).map(c => {
       const cv = document.createElement('canvas');
       cv.width = cv.height = size;
       const g = cv.getContext('2d');
@@ -583,12 +678,29 @@
     // top: skewer from above the screen down to the tip
     drawStick(cx, -20, tTop, true);
     const topBalls = ballCenters(p, true);
-    for (let i = 2; i >= 0; i--) drawBall(i, cx + (i === 0 ? wob * 0.3 : 0), topBalls[i]);
+    if (p.golden) drawGoldGlow(cx, p.gapY, p.gap);
+    for (let i = 2; i >= 0; i--) drawBall(p.golden ? 3 : i, cx + (i === 0 ? wob * 0.3 : 0), topBalls[i]);
 
     // bottom: skewer planted in the sand, pointing up
     drawStick(cx, tBot, groundY() + 14, false);
     const botBalls = ballCenters(p, false);
-    for (let i = 2; i >= 0; i--) drawBall(i, cx - (i === 0 ? wob * 0.3 : 0), botBalls[i]);
+    for (let i = 2; i >= 0; i--) drawBall(p.golden ? 3 : i, cx - (i === 0 ? wob * 0.3 : 0), botBalls[i]);
+  }
+
+  function drawGoldGlow(cx, cy, gap) {
+    ctx.save();
+    ctx.globalAlpha = 0.28 + 0.12 * Math.sin(time * 6);
+    const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, gap * 0.75);
+    g.addColorStop(0, '#fff3a0'); g.addColorStop(1, 'rgba(255,220,80,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, gap * 0.75, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    for (let k = 0; k < 3; k++) {
+      const a = time * 2 + k * 2.1;
+      ctx.fillStyle = '#fff3a0';
+      ctx.save(); ctx.translate(cx + Math.cos(a) * 22, cy + Math.sin(a * 1.3) * gap * 0.3); ctx.rotate(a);
+      ctx.fillRect(-2.5, -2.5, 5, 5); ctx.restore();
+    }
   }
 
   function drawBall(i, x, y) {
@@ -642,6 +754,15 @@
   let petalFreeScore = 0;     // score reached before the first petal of the run
   let caught = 0;             // petals caught (not close-call bonuses)
   let missionsOpen = false;
+  let bookOpen = false;
+  let settingsOpen = false;
+  let reveal = null;          // { skin, t } after unlocking a friend
+  let gustT = 0;
+  const GUST_WARN = 0.8, GUST_TIME = 1.1;
+  let bestCelebrated = false;
+  let hints = [];             // first-time tips that follow an obstacle
+  let medalPlayed = false;
+  let goldenCount = 0;
   let missionPetals = 0;      // petals earned from missions this run
 
   for (let i = 0; i < 14; i++) floaters.push(newFloater(true));
@@ -676,6 +797,11 @@
     scorePop = 0;
     firstPipes = 0;
     nearCount = 0;
+    gustT = 0;
+    bestCelebrated = false;
+    hints = [];
+    medalPlayed = false;
+    goldenCount = 0;
     petalFreeScore = 0;
     caught = 0;
     missionPetals = 0;
@@ -696,7 +822,32 @@
       mochi.splat = null; mochi.dead = false;
       mochi.sx = 1; mochi.sy = 1; mochi.rot = 0; mochi.vy = 0;
       missionsOpen = false;
+      bookOpen = false;
     }
+  }
+
+  // First-time tips: shown once per install, optionally following an obstacle.
+  function tip(key, msg, x, y, follow = null, petal = null) {
+    if (save.tips[key]) return;
+    save.tips[key] = true;
+    store.set('tips', save.tips);
+    hints.push({ msg, x, y, follow, petal, offX: follow ? x - follow.x : 0, life: 2.6 });
+  }
+
+  function celebrateIfBest() {
+    if (bestCelebrated) return;
+    let label = null;
+    if (target > 0 && score > target) label = `You beat ${target}!`;
+    else if (target === 0 && mode === 'classic' && save.best > 0 && score > save.best) label = 'NEW BEST!';
+    else if (target === 0 && mode === 'daily' && save.daily.best > 0 && score > save.daily.best && runDate === save.daily.date) label = 'DAILY BEST!';
+    if (!label) return;
+    bestCelebrated = true;
+    mochi.spinV = 50;
+    mochi.happy = 0.8;
+    sfx.unlock();
+    haptic('heavy');
+    popups.push({ x: W / 2, y: 170 + topInset, text: label, life: 1.6, size: 30, color: '#ffe36e', vy: 18 });
+    for (let i = 0; i < 30; i++) spawnParticle(mochi.x, mochi.y, rand(-260, 260), rand(-320, 80), 1.1, rand(4, 7), i % 3 ? '#ffb3cc' : '#ffe36e', 'petal');
   }
 
   function spawnParticle(x, y, vx, vy, life, size, color, kind) {
@@ -723,12 +874,19 @@
     let c = firstPipes < 3 ? mid + srand(-t.shift, t.shift) * 0.5 : srand(minC, maxC);
     const prev = pipes[pipes.length - 1];
     if (prev) c = clamp(c, prev.gapY - t.shift, prev.gapY + t.shift);
-    c = clamp(c, minC, maxC);
+    const lvl = score + pipes.filter(p => !p.passed).length;
+    // from 25 points some skewers bob up and down
+    const bobAmp = lvl >= 25 && rng() < 0.5 ? Math.min(26, 10 + (lvl - 25) * 0.5) : 0;
+    c = clamp(c, minC + bobAmp, maxC - bobAmp);
     firstPipes++;
+    const golden = lvl >= 12 && rng() < 0.12;
+    const night = Math.floor((lvl / 12) % 4) === 2;
+    const gust = night && lvl >= 28 && rng() < 0.35;
     const hasPetal = rng() < 0.55;
     const pdx = COL_W / 2 + srand(75, SPACING - 80), pdy = srand(-gap * 0.3, gap * 0.3);
     pipes.push({
-      x, gapY: c, gap, passed: false, minClear: Infinity,
+      x, gapY: c, baseY: c, gap, passed: false, minClear: Infinity,
+      bobAmp, bobSpeed: 1.3 + rng() * 0.8, bobPhase: rng() * Math.PI * 2, golden, gust,
       petal: hasPetal ? { dx: pdx, y: c + pdy, taken: false, bob: rand(0, 6) } : null,
       sway: rand(0, Math.PI * 2),
     });
@@ -753,7 +911,7 @@
     for (let i = 0; i < 10; i++) {
       const a = rand(0, Math.PI * 2);
       spawnParticle(mochi.x, mochi.y, Math.cos(a) * rand(80, 220), Math.sin(a) * rand(80, 220) - 60, 0.6, rand(3, 6),
-        SKINS[skinIndex].body, 'blob');
+        SKINS[skinIndex].splat || SKINS[skinIndex].body, 'blob');
     }
     for (let i = 0; i < 6; i++) {
       const a = rand(0, Math.PI * 2);
@@ -788,6 +946,13 @@
     t.runs++; t.petals += caught; t.near += nearCount; t.score += score;
     store.set('totals', t);
     missionPetals = applyMissions({ score, petals: caught, near: nearCount, petalFreeScore, daily: mode === 'daily', quit });
+    const weeklyEarned = applyWeekly({ score, petals: caught, near: nearCount, golden: goldenCount, daily: mode === 'daily', date: runDate });
+    if (weeklyEarned > 0) {
+      missionPetals += weeklyEarned;
+      save.weekly.list.forEach(m => { if (m.lateDone) { delete m.lateDone; popups.push({ x: W / 2, y: 120 + topInset, text: 'Weekly mission done!', life: 2, size: 18, color: '#8ff0b4', vy: 10 }); } });
+      store.set('weekly', save.weekly);
+      setTimeout(() => { sfx.mission(); haptic('click'); }, 500);
+    }
     if (save.missions.some(m => m.lateDone)) { setTimeout(() => { sfx.mission(); haptic('click'); }, 350); }
     save.missions.forEach(m => { delete m.lateDone; });
     save.petals += runPetals + missionPetals;
@@ -898,7 +1063,18 @@
       mochi.rot = clamp(mochi.vy / 1400, -0.35, 0.5);
       if (mochi.y < mochi.r) { mochi.y = mochi.r; mochi.vy = 0; }
 
-      for (const p of pipes) p.x -= speed * dt;
+      for (const p of pipes) {
+        p.x -= speed * dt;
+        if (p.bobAmp) p.gapY = p.baseY + Math.sin(time * p.bobSpeed + p.bobPhase) * p.bobAmp;
+        // a gust is tied to a skewer, so daily runs get the same wind
+        if (p.gust && !p.gustDone && p.x < W * 0.95) { p.gustDone = true; gustT = GUST_WARN + GUST_TIME; sfx.whoosh(); tip('wind', 'Wind! Hop a bit more', W / 2, 136 + topInset); }
+        if (p.golden && !p.goldSeen && p.x < W - 20) { p.goldSeen = true; tip('golden', 'Golden gap = 3 points!', p.x + COL_W / 2, p.gapY - p.gap / 2 - 24, p); }
+        if (p.petal && !p.petal.taken && !p.petal.hinted && p.x + p.petal.dx < W - 30) { p.petal.hinted = true; tip('petal', 'Catch petals!', p.x + p.petal.dx, p.petal.y - 30, p, p.petal); }
+      }
+      if (gustT > 0) {
+        gustT -= dt;
+        if (gustT < GUST_TIME) mochi.vy += GRAVITY * 0.22 * dt;   // gentle downdraft
+      }
       while (pipes.length && pipes[0].x < -COL_W - SPACING) pipes.shift();
       const last = pipes[pipes.length - 1];
       if (!last || last.x < W + 40 - SPACING) spawnPipe(last ? last.x + SPACING : W + 120);
@@ -919,7 +1095,16 @@
         }
         if (!p.passed && p.x + COL_W < mochi.x) {
           p.passed = true;
-          score++;
+          const before = score;
+          const pts = p.golden ? 3 : 1;
+          score += pts;
+          if (p.golden) {
+            goldenCount++;
+            popups.push({ x: mochi.x + 10, y: mochi.y - 46, text: '+3 GOLDEN!', life: 1, size: 20, color: '#ffd84a' });
+            for (let i = 0; i < 12; i++) spawnParticle(mochi.x, mochi.y, rand(-160, 160), rand(-220, 40), 0.7, rand(3, 6), '#ffd84a', 'star');
+            sfx.golden();
+          }
+          celebrateIfBest();
           if (caught === 0) petalFreeScore = score;
           liveMissionCheck();
           if (p.minClear < 7) {
@@ -929,16 +1114,17 @@
             sfx.close();
             haptic('tick');
             popups.push({ x: mochi.x + 10, y: mochi.y - 30, text: 'Close! +1', life: 0.9, size: 17, color: '#fff3a0' });
+            tip('close', 'Close call! Scrape tips for bonus petals', W / 2, 136 + topInset);
             for (let i = 0; i < 6; i++) spawnParticle(mochi.x, mochi.y, rand(-80, 80), rand(-160, -40), 0.5, rand(3, 5), '#fff3a0', 'star');
             liveMissionCheck();
           }
           scorePop = 1;
           mochi.perk = 1;
           mochi.happy = 0.3;
-          if (score % 10 === 0) {
+          if (Math.floor(before / 10) < Math.floor(score / 10)) {
             sfx.milestone();
             haptic('heavy');
-            popups.push({ x: W / 2, y: 130 + topInset, text: `${score}!`, life: 1.1, size: 34, color: '#ffe36e' });
+            popups.push({ x: W / 2, y: 130 + topInset, text: `${Math.floor(score / 10) * 10}!`, life: 1.1, size: 34, color: '#ffe36e' });
           } else {
             sfx.score(score);
             haptic('click');
@@ -998,6 +1184,12 @@
     for (let i = 0; i < particles.length; i++) if (particles[i].life > 0) particles[n++] = particles[i];
     particles.length = n;
     for (const u of popups) { u.life -= dt; u.y -= (u.vy ?? 40) * dt; }
+    for (const h of hints) {
+      h.life -= dt;
+      if (h.follow) h.x = h.follow.x + h.offX;
+      if (h.petal && h.petal.taken) h.life = Math.min(h.life, 0.3);
+    }
+    hints = hints.filter(h => h.life > 0);
     n = 0;
     for (let i = 0; i < popups.length; i++) if (popups[i].life > 0) popups[n++] = popups[i];
     popups.length = n;
@@ -1097,7 +1289,29 @@
     ridge(distance * 0.25, groundY() - 40, 26, 4.1, sky.near, 8);
     drawSakuraTrees(distance * 0.4, groundY() - 2, 'rgba(90,60,70,0.55)', sky.night > 0.5 ? 'rgba(210,150,190,0.55)' : 'rgba(255,190,210,0.8)');
 
+    if (sky.night > 0.3) drawLanterns(sky.night);
     for (const f of floaters) drawPetal(f.x * W, f.y * H, f.s, f.a, 'rgba(255,183,206,0.75)');
+  }
+
+  // Paper lanterns drift by at night (decoration only)
+  function drawLanterns(alpha) {
+    const period = 170;
+    const off = distance * 0.55;
+    const start = Math.floor(off / period) - 1;
+    for (let k = start; k < start + Math.ceil(W / period) + 2; k++) {
+      const x = k * period - off + ((k * 37) % 60);
+      const y = 150 + ((k * 53) % 170) + Math.sin(time * 1.5 + k) * 8;
+      ctx.globalAlpha = alpha * 0.85;
+      const g = ctx.createRadialGradient(x, y, 2, x, y, 26);
+      g.addColorStop(0, 'rgba(255,200,120,0.7)'); g.addColorStop(1, 'rgba(255,160,80,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff7a4a';
+      ctx.beginPath(); ctx.ellipse(x, y, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#5a2e2e';
+      ctx.fillRect(x - 5, y - 12, 10, 2.5); ctx.fillRect(x - 5, y + 9.5, 10, 2.5);
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawPetal(x, y, s, a, color) {
@@ -1260,6 +1474,7 @@
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.beginPath(); ctx.ellipse(-r * 0.5, -r * 0.5, r * 0.28, r * 0.15, -0.6, 0, Math.PI * 2); ctx.fill();
 
+    if (skin.pattern) drawPattern(skin, r, rx, ry);
     drawAccessory(skin.acc, r, top);
 
     // cheeks
@@ -1270,10 +1485,11 @@
     ctx.globalAlpha = 1;
 
     // eyes (pupils glance up when rising, down when falling)
+    const eyeC = skin.eye || '#2b1d2e';
     const ex = r * 0.36, ey = -r * 0.06;
     const look = clamp((o.vy || 0) / 400, -1, 1) * 1.4;
-    ctx.strokeStyle = '#2b1d2e';
-    ctx.fillStyle = '#2b1d2e';
+    ctx.strokeStyle = eyeC;
+    ctx.fillStyle = eyeC;
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -1298,9 +1514,9 @@
     } else {
       for (const s of [-1, 1]) {
         ctx.beginPath(); ctx.ellipse(s * ex, ey + look * 0.4, 3.2, 4.2, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = skin.eye ? '#2b1d2e' : '#fff';
         ctx.beginPath(); ctx.arc(s * ex + 1.1, ey - 1.6 + look * 0.4, 1.3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#2b1d2e';
+        ctx.fillStyle = eyeC;
       }
     }
 
@@ -1325,6 +1541,37 @@
     }
 
     ctx.restore();
+    ctx.restore();
+  }
+
+  function drawPattern(skin, r, rx, ry) {
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(0, -0.5, rx * 0.97, ry * 0.94, 0, 0, Math.PI * 2); ctx.clip();
+    if (skin.pattern === 'dust') {
+      ctx.fillStyle = 'rgba(160,110,50,0.45)';
+      for (const [x, y] of [[-12, -9], [-4, -13], [7, -11], [13, -4], [-15, 2], [11, 9], [-8, 11], [2, 13], [15, 3]]) {
+        ctx.beginPath(); ctx.arc(x * r / 18, y * r / 18, 0.9, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (skin.pattern === 'seeds') {
+      ctx.fillStyle = '#f5ecd9';
+      for (const [x, y, a] of [[-11, -10, 0.5], [-2, -14, -0.3], [9, -11, 0.8], [14, -2, 0.2], [-15, 3, -0.6], [12, 9, -0.4], [-6, 12, 0.9], [4, 13, 0.1]]) {
+        ctx.save(); ctx.translate(x * r / 18, y * r / 18); ctx.rotate(a);
+        ctx.beginPath(); ctx.ellipse(0, 0, 1.6, 0.8, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    } else if (skin.pattern === 'ribs') {
+      ctx.strokeStyle = 'rgba(200,100,20,0.45)';
+      ctx.lineWidth = 1.4;
+      for (const k of [-0.55, 0.55]) {
+        ctx.beginPath(); ctx.ellipse(0, 0, rx * Math.abs(k), ry * 0.95, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+    } else if (skin.pattern === 'bands') {
+      // hanami dango colours
+      ctx.fillStyle = 'rgba(255,170,200,0.75)';
+      ctx.fillRect(-rx, -ry, rx * 2, ry * 0.62);
+      ctx.fillStyle = 'rgba(180,220,140,0.8)';
+      ctx.fillRect(-rx, ry * 0.42, rx * 2, ry);
+    }
     ctx.restore();
   }
 
@@ -1370,6 +1617,46 @@
       ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#ff4f7a';
       ctx.beginPath(); ctx.arc(0, -3, 1.5, 0, Math.PI * 2); ctx.fill();
+    } else if (kind === 'leaf') {
+      ctx.translate(r * 0.6, top + 6);
+      ctx.rotate(0.5);
+      ctx.fillStyle = '#6cbf4a';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(6, -7, 12, -2); ctx.quadraticCurveTo(6, 3, 0, 0); ctx.fill();
+    } else if (kind === 'cup') {
+      // little matcha bowl
+      ctx.translate(-r * 0.62, top + 6);
+      ctx.rotate(-0.3);
+      ctx.fillStyle = '#7a5a46';
+      ctx.beginPath(); ctx.moveTo(-6, -3); ctx.lineTo(6, -3); ctx.quadraticCurveTo(5, 5, 0, 5); ctx.quadraticCurveTo(-5, 5, -6, -3); ctx.fill();
+      ctx.fillStyle = '#8fcf5a';
+      ctx.beginPath(); ctx.ellipse(0, -3, 6, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (kind === 'strawberry') {
+      ctx.translate(r * 0.55, top + 4);
+      ctx.rotate(0.3);
+      ctx.fillStyle = '#ff4060';
+      ctx.beginPath(); ctx.moveTo(-5, -3); ctx.quadraticCurveTo(0, -6, 5, -3); ctx.quadraticCurveTo(4, 5, 0, 7); ctx.quadraticCurveTo(-4, 5, -5, -3); ctx.fill();
+      ctx.fillStyle = '#ffe36e';
+      for (const [x, y] of [[-2, -1], [2, 0], [0, 3], [-2, 3.5], [2.5, 3.5]]) ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+      ctx.fillStyle = '#4aa83c';
+      ctx.beginPath(); ctx.moveTo(-5, -4); ctx.lineTo(0, -2); ctx.lineTo(5, -4); ctx.lineTo(0, -6); ctx.fill();
+    } else if (kind === 'cloud') {
+      ctx.translate(-r * 0.6, top + 5);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(80,120,160,0.5)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(-4, 0, 3.5, 0, Math.PI * 2); ctx.arc(1, -2, 4.5, 0, Math.PI * 2); ctx.arc(6, 0, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    } else if (kind === 'stem') {
+      ctx.translate(r * 0.45, top + 3);
+      ctx.fillStyle = '#6b4a2b';
+      roundRect(-2, -6, 4, 7, 1.5); ctx.fill();
+      ctx.fillStyle = '#4aa83c';
+      ctx.beginPath(); ctx.moveTo(1, -4); ctx.quadraticCurveTo(7, -9, 10, -3); ctx.quadraticCurveTo(5, -2, 1, -4); ctx.fill();
+    } else if (kind === 'scarf') {
+      ctx.translate(0, -top * 0.72);
+      ctx.fillStyle = '#ff5f6f';
+      roundRect(-r * 0.95, -2.5, r * 1.9, 5, 2.5); ctx.fill();
+      ctx.fillRect(r * 0.35, 0, 4, 9);
+      ctx.fillStyle = '#ffffff';
+      for (let i = -3; i <= 3; i++) ctx.fillRect(i * 4.5 - 0.6, -2.5, 1.2, 5);
     }
     ctx.restore();
   }
@@ -1471,29 +1758,85 @@
     }
 
     const hy = cy, hx = cx - 50;
-    roundIcon('haptics', hx, hy);
-    ctx.lineWidth = 2;
-    roundRect(hx - 5, hy - 9, 10, 18, 2.5); ctx.stroke();
-    if (save.haptics) {
-      for (const s of [-1, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(hx + s * 9, hy - 6); ctx.lineTo(hx + s * 12, hy - 2); ctx.lineTo(hx + s * 9, hy + 2); ctx.lineTo(hx + s * 12, hy + 6);
-        ctx.stroke();
+    roundIcon('settings', hx, hy);
+    // gear
+    ctx.save();
+    ctx.translate(hx, hy);
+    for (let k = 0; k < 8; k++) { ctx.rotate(Math.PI / 4); ctx.fillRect(-2.2, -11, 4.4, 5); }
+    ctx.beginPath(); ctx.arc(0, 0, 7.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  const SETTING_ROWS = [
+    { key: 'music', label: 'Music', kind: 'level' },
+    { key: 'sfx', label: 'Sound effects', kind: 'level' },
+    { key: 'haptics', label: 'Vibration', kind: 'toggle' },
+    { key: 'reduced', label: 'Reduced motion', kind: 'toggle', note: 'No screen shake or flashes' },
+    { key: 'lefty', label: 'Left-handed', kind: 'toggle', note: 'Pause button on the left' },
+  ];
+  function settingValue(r) { return r.key === 'haptics' ? save.haptics : save.settings[r.key]; }
+
+  function drawSettings() {
+    for (const k in ui) delete ui[k];
+    ctx.fillStyle = 'rgba(29,27,47,0.75)';
+    ctx.fillRect(0, 0, W, H);
+    const pw = Math.min(300, W - 24), px = W / 2 - pw / 2, py = 120 + topInset * 0.6;
+    const rowH = 50, ph = 70 + SETTING_ROWS.length * rowH + 70;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRect(px, py + 6, pw, ph, 20); ctx.fill();
+    ctx.fillStyle = '#4a3550';
+    roundRect(px, py, pw, ph, 20); ctx.fill();
+    ctx.strokeStyle = '#ffd3e2'; ctx.lineWidth = 2; ctx.stroke();
+    text('Settings', W / 2, py + 34, 26, '#fff');
+    SETTING_ROWS.forEach((r, i) => {
+      const ry = py + 72 + i * rowH + rowH / 2;
+      ui['set_' + r.key] = { x: px, y: ry - rowH / 2, w: pw, h: rowH };
+      text(r.label, px + 20, r.note ? ry - 6 : ry + 1, 16, '#fff', 'left', null);
+      if (r.note) text(r.note, px + 20, ry + 12, 10, '#d9c3dd', 'left', null);
+      const v = settingValue(r);
+      const on = r.kind === 'level' ? v > 0 : v;
+      const label = r.kind === 'level' ? LEVELS[v] : (v ? 'On' : 'Off');
+      ctx.fillStyle = on ? '#ff7aa2' : 'rgba(255,255,255,0.18)';
+      roundRect(px + pw - 98, ry - 15, 80, 30, 15); ctx.fill();
+      text(label, px + pw - 58, ry + 1, 14, '#fff', 'center', null);
+      if (r.kind === 'level') {
+        for (let k = 1; k <= 3; k++) {
+          ctx.fillStyle = k <= v ? '#ffe36e' : 'rgba(255,255,255,0.25)';
+          ctx.fillRect(px + pw - 120 + k * 5, ry + 6 - k * 4, 3, k * 4);
+        }
       }
-    } else {
-      ctx.beginPath(); ctx.moveTo(hx - 12, hy + 11); ctx.lineTo(hx + 12, hy - 11); ctx.stroke();
+    });
+    button('settingsDone', W / 2, py + ph - 38, 140, 44, 'DONE', '#7ac7ff');
+  }
+
+  function tapSettings(x, y) {
+    for (const r of SETTING_ROWS) {
+      if (!hitTest('set_' + r.key, x, y)) continue;
+      if (r.key === 'haptics') { save.haptics = !save.haptics; store.set('haptics', save.haptics); haptic('click'); }
+      else if (r.kind === 'level') { save.settings[r.key] = (save.settings[r.key] + 1) % 4; }
+      else save.settings[r.key] = !save.settings[r.key];
+      store.set('settings', save.settings);
+      initAudio(); applyVolumes();
+      sfx.click();
+      return;
     }
+    // DONE or anywhere outside a row closes the panel
+    settingsOpen = false;
+    sfx.click();
   }
 
   const titleY = () => Math.max(0, topInset - 16);
 
-  function drawMissions(x, y, w, compact, live = false) {
+  function drawMissions(x, y, w, compact, live = false, list = save.missions, title = 'MISSIONS', note = '') {
     const rowH = 26;
-    const h = rowH * save.missions.length + 34;
+    const h = rowH * list.length + 34;
     ctx.fillStyle = 'rgba(58,42,63,0.55)';
     roundRect(x, y, w, h, 14); ctx.fill();
-    text('MISSIONS', x + 12, y + 14, 12, '#ffe3ee', 'left', null);
-    save.missions.forEach((m, i) => {
+    text(title, x + 12, y + 14, 12, '#ffe3ee', 'left', null);
+    if (note) text(note, x + w - 12, y + 14, 11, '#d9c3dd', 'right', null);
+    list.forEach((m, i) => {
       const d = missionDef(m.id);
       const ry = y + 36 + i * rowH;
       // tick box
@@ -1526,7 +1869,7 @@
     const unlocked = save.unlocked.includes(skin.id);
     const ty = titleY();
 
-    const bob = Math.sin(time * 2) * 3;
+    const bob = reducedMotion() ? 0 : Math.sin(time * 2) * 3;
     text('Mochi', cx, 112 + ty + bob, 56, '#fff8f0', 'center', '#3a2a3f');
     text('HOP', cx, 158 + ty + bob, 40, '#ff8fb3', 'center', '#3a2a3f');
 
@@ -1549,17 +1892,19 @@
     arrowButton('right', cx + ax, 254 + ty, 1);
 
     text(skin.name, cx, 316 + ty, 24, '#fff');
-    for (let i = 0; i < SKINS.length; i++) {
-      ctx.fillStyle = i === skinIndex ? '#fff' : 'rgba(255,255,255,0.45)';
-      ctx.beginPath(); ctx.arc(cx + (i - (SKINS.length - 1) / 2) * 16, 340 + ty, i === skinIndex ? 5 : 4, 0, Math.PI * 2); ctx.fill();
-    }
+    const owned = SKINS.filter(k => save.unlocked.includes(k.id)).length;
+    text(skin.season ? `Seasonal friend · ${skin.seasonName}` : `${owned}/${SKINS.length} friends`, cx, 340 + ty, 12, skin.season ? '#ffe36e' : '#ffe3ee', 'center', null);
 
     if (unlocked) {
       button('play', cx, 386 + ty, 180, 52, 'PLAY', '#ff7aa2');
     } else {
-      const can = save.petals >= skin.cost;
-      button('play', cx, 386 + ty, 200, 52, `UNLOCK ${skin.cost}`, '#ffb347', can);
-      if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 356 + ty, 13, '#fff');
+      if (!inSeason(skin)) {
+        button('play', cx, 386 + ty, 210, 52, `BACK ${skin.seasonName.toUpperCase()}`, '#ffb347', false);
+      } else {
+        const can = save.petals >= skin.cost;
+        button('play', cx, 386 + ty, 200, 52, `UNLOCK ${skin.cost}`, '#ffb347', can);
+        if (!can) text(`Collect ${skin.cost - save.petals} more petals`, cx, 356 + ty, 13, '#fff');
+      }
     }
 
     refreshDaily();
@@ -1578,32 +1923,46 @@
       text(d.streak > 0 ? `${dailyInfo} · ${d.streak} day streak` : dailyInfo, cx, 480 + ty, 12, '#fff');
     }
 
+    if (isWeb && PLAY_STORE_URL) pillButton('store', cx, 568 + ty, 210, 'GET IT ON GOOGLE PLAY', 'book', 0);
+    else if (isWeb && installPrompt) pillButton('install', cx, 568 + ty, 170, 'ADD TO HOME', 'book', 0);
+
     // missions toggle
     ensureMissions();
     const done = save.missions.filter(m => m.done).length;
     const fresh = save.missions.filter(m => m.isNew && !m.done).length;
-    missionsButton(cx, 524 + ty, fresh);
+    const pw2 = Math.min(144, W / 2 - 14);
+    pillButton('missions', cx - pw2 / 2 - 5, 524 + ty, pw2, 'MISSIONS', 'scroll', fresh);
+    pillButton('book', cx + pw2 / 2 + 5, 524 + ty, pw2, 'FRIENDS', 'book', 0);
 
     petalCounter(26, 36 + topInset, save.petals);
     text(`BEST ${save.best}`, W / 2, 37 + topInset, 17, '#fff');
     settingsButtons();
 
     if (missionsOpen) drawMissionsOverlay();
+    if (bookOpen) drawBook();
+    if (reveal) drawReveal();
   }
 
-  function missionsButton(cx, cy, badge) {
-    const w = 150, h = 36;
-    ui.missions = { x: cx - w / 2, y: cy - h / 2, w, h };
+  function pillButton(id, cx, cy, w, label, icon, badge) {
+    const h = 36;
+    ui[id] = { x: cx - w / 2, y: cy - h / 2, w, h };
     ctx.fillStyle = 'rgba(58,42,63,0.6)';
     roundRect(cx - w / 2, cy - h / 2, w, h, 18); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
-    // scroll icon
-    const ix = cx - w / 2 + 22;
-    ctx.fillStyle = '#fff6ea';
-    roundRect(ix - 8, cy - 9, 16, 18, 3); ctx.fill();
-    ctx.strokeStyle = '#b06b85'; ctx.lineWidth = 1.5;
-    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(ix - 4, cy - 4 + i * 4); ctx.lineTo(ix + 4, cy - 4 + i * 4); ctx.stroke(); }
-    text('MISSIONS', cx + 12, cy + 1, 15, '#fff', 'center', null);
+    const ix = cx - w / 2 + 20;
+    if (icon === 'scroll') {
+      ctx.fillStyle = '#fff6ea';
+      roundRect(ix - 7, cy - 9, 14, 18, 3); ctx.fill();
+      ctx.strokeStyle = '#b06b85'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(ix - 4, cy - 4 + i * 4); ctx.lineTo(ix + 4, cy - 4 + i * 4); ctx.stroke(); }
+    } else {
+      // little book
+      ctx.fillStyle = '#ff8fb3';
+      roundRect(ix - 8, cy - 8, 16, 16, 2); ctx.fill();
+      ctx.fillStyle = '#fff6ea';
+      ctx.fillRect(ix - 6, cy - 6, 5, 12); ctx.fillRect(ix + 1, cy - 6, 5, 12);
+    }
+    text(label, cx + 10, cy + 1, 14, '#fff', 'center', null);
     if (badge > 0) {
       ctx.fillStyle = '#ff4f7a';
       ctx.beginPath(); ctx.arc(cx + w / 2 - 4, cy - h / 2 + 4, 10, 0, Math.PI * 2); ctx.fill();
@@ -1612,18 +1971,95 @@
     }
   }
 
+  // Friends collection book: every friend, locked ones as silhouettes.
+  function drawBook() {
+    for (const k of ['play', 'daily', 'left', 'right', 'missions', 'book']) delete ui[k];
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#3b2c4f'); bg.addColorStop(1, '#2a2036');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 12; i++) drawPetal((i * 97 + 20) % W, (i * 151) % H, 4, i, 'rgba(255,183,206,0.25)');
+    const cols = W >= 330 ? 4 : 3;
+    const rowsN = Math.ceil(SKINS.length / cols);
+    const chh = Math.min(86, (H - 150 - topInset) / rowsN);
+    const cw = Math.min(78, (W - 24) / cols);
+    const gw = cw * cols, gx = W / 2 - gw / 2, gy = 92 + topInset * 0.8;
+    const owned = SKINS.filter(k => save.unlocked.includes(k.id)).length;
+    text('Friends', W / 2, gy - 38, 32, '#fff');
+    text(`${owned} of ${SKINS.length} collected`, W / 2, gy - 12, 13, '#ffe3ee', 'center', null);
+    SKINS.forEach((sk, i) => {
+      const cx = gx + (i % cols) * cw + cw / 2, cy = gy + Math.floor(i / cols) * chh + chh / 2;
+      const have = save.unlocked.includes(sk.id);
+      ctx.fillStyle = i === skinIndex ? 'rgba(255,143,179,0.45)' : 'rgba(255,255,255,0.12)';
+      roundRect(cx - cw / 2 + 3, cy - chh / 2 + 3, cw - 6, chh - 6, 12); ctx.fill();
+      if (i === skinIndex) { ctx.strokeStyle = '#ff8fb3'; ctx.lineWidth = 2; ctx.stroke(); }
+      const ms = chh < 80 ? 0.82 : 0.95;
+      if (have) {
+        drawMochi(cx, cy - 10, ms, sk, { spin: 0, blink: false });
+      } else {
+        ctx.globalAlpha = 0.35;
+        drawMochi(cx, cy - 10, ms, Object.assign({}, sk, { body: '#6a5a72', shade: '#4a3d52', cheek: '#6a5a72', pattern: null, eye: '#6a5a72' }), { spin: 0, blink: true });
+        ctx.globalAlpha = 1;
+      }
+      text(have ? sk.name : '???', cx, cy + chh * 0.24, 11, '#fff', 'center', null);
+      const sub = have ? '' : (sk.season && !inSeason(sk) ? sk.seasonName : `${sk.cost}`);
+      if (sub) {
+        const sy = cy + chh * 0.39;
+        if (!(sk.season && !inSeason(sk))) drawSakura(cx - 12, sy - 1, 5, 0);
+        text(sub, sk.season && !inSeason(sk) ? cx : cx + 4, sy, 10, '#ffd3e2', 'center', null);
+      }
+      if (sk.season) { ctx.fillStyle = '#ffb000'; ctx.beginPath(); ctx.arc(cx + cw / 2 - 12, cy - chh / 2 + 12, 4, 0, Math.PI * 2); ctx.fill(); }
+      ui['cell' + i] = { x: cx - cw / 2, y: cy - chh / 2, w: cw, h: chh };
+    });
+    text('Tap a friend to pick · tap outside to close', W / 2, gy + rowsN * chh + 16, 12, '#fff', 'center', null);
+  }
+
+  // Big "new friend" reveal after unlocking
+  function drawReveal() {
+    for (const k of ['play', 'daily', 'left', 'right', 'missions', 'book']) delete ui[k];
+    const t = time - reveal.t;
+    const cx = W / 2, cy = H * 0.42;
+    ctx.fillStyle = 'rgba(29,27,47,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * (reducedMotion() ? 0 : 0.4));
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6);
+      ctx.fillStyle = i % 2 ? 'rgba(255,227,110,0.18)' : 'rgba(255,143,179,0.18)';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-30, -H); ctx.lineTo(30, -H); ctx.fill();
+    }
+    ctx.restore();
+    const pop = Math.min(1, t / 0.35);
+    const sc = 2.6 * (pop < 1 ? 0.4 + 0.6 * (1 - Math.pow(1 - pop, 3)) * 1.1 : 1 + Math.sin(t * 3) * 0.03);
+    drawMochi(cx, cy, sc, reveal.skin, { happy: t > 0.4 && t < 1.2, spin: t * 8 });
+    text('New friend!', cx, cy - 110, 34, '#ffe36e');
+    text(reveal.skin.name, cx, cy + 82, 30, '#fff');
+    if (t > 0.6) text('Tap to continue', cx, cy + 124, 15, '#ffe3ee', 'center', null);
+    drawParticles();
+  }
+
   function drawMissionsOverlay() {
     for (const k of ['play', 'daily', 'left', 'right', 'missions']) delete ui[k];
     ctx.fillStyle = 'rgba(29,27,47,0.6)';
     ctx.fillRect(0, 0, W, H);
-    const pw = Math.min(310, W - 24), px = W / 2 - pw / 2, py = 200 + titleY();
-    const cardH = 26 * save.missions.length + 34 + 44;
+    refreshWeekly();
+    const pw = Math.min(310, W - 24), px = W / 2 - pw / 2, py = 150 + titleY();
+    const listH = 26 * 3 + 34;
+    const cardH = listH * 2 + 12 + 24 + 44;
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     roundRect(px - 6, py - 6 + 6, pw + 12, cardH + 12, 20); ctx.fill();
     ctx.fillStyle = '#4a3550';
     roundRect(px - 6, py - 6, pw + 12, cardH + 12, 20); ctx.fill();
     ctx.strokeStyle = '#ffd3e2'; ctx.lineWidth = 2; ctx.stroke();
-    const h = drawMissions(px, py, pw, false);
+    let h = drawMissions(px, py, pw, false);
+    h += 12;
+    const wh = drawMissions(px, py + h, pw, false, false, save.weekly.list, 'THIS WEEK', weeklyResetText());
+    h += wh;
+    const allDone = save.weekly.bonus;
+    drawSakura(px + 20, py + h + 13, 6, 0);
+    text(allDone ? `Weekly bonus collected (+${WEEKLY_BONUS})` : `Finish all 3 this week: +${WEEKLY_BONUS} bonus`, px + 32, py + h + 14, 12, allDone ? '#8ff0b4' : '#ffe36e', 'left', null);
+    h += 24;
     const t = save.totals;
     text(`All time: ${t.runs} runs · ${t.near} close calls · ${t.petals} petals`, W / 2, py + h + 14, 11, '#ffe3ee', 'center', null);
     text('Tap anywhere to close', W / 2, py + h + 34, 13, '#fff', 'center', null);
@@ -1717,12 +2153,31 @@
     ctx.fillStyle = 'rgba(0,0,0,0.08)';
     ctx.beginPath(); ctx.arc(mx, my, 34, 0, Math.PI * 2); ctx.fill();
     if (m) {
-      const g = ctx.createRadialGradient(mx - 8, my - 8, 3, mx, my, 32);
+      // medal award: pops in with a bounce, then a shine sweeps across
+      const live = state === 'over';
+      const t = live ? clamp((stateT - 0.15) / 0.45, 0, 1) : 1;
+      if (live && t > 0 && !medalPlayed) { medalPlayed = true; sfx.medal(); haptic('click'); }
+      const c1 = 1.70158, c3 = c1 + 1;
+      const k = reducedMotion() ? 1 : (t <= 0 ? 0 : 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2));
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.scale(k, k);
+      const g = ctx.createRadialGradient(-8, -8, 3, 0, 0, 32);
       g.addColorStop(0, m.c1); g.addColorStop(1, m.c2);
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(mx, my, 30, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
-      drawMochi(mx, my + 4, 0.95, SKINS[skinIndex], { happy: true, spin: 0 });
+      drawMochi(0, 4, 0.95, SKINS[skinIndex], { happy: true, spin: 0 });
+      const sweep = live ? (stateT - 0.6) / 0.5 : 2;
+      if (sweep > 0 && sweep < 1 && !reducedMotion()) {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.rotate(-0.6);
+        ctx.fillRect(-40 + sweep * 80, -40, 10, 80);
+        ctx.restore();
+      }
+      ctx.restore();
       text(m.name, mx, py + ph - 14, 12, m.c2, 'center', null);
     } else {
       text('?', mx, my, 26, 'rgba(58,42,63,0.25)', 'center', null);
@@ -1846,6 +2301,58 @@
     return `🍡 I scored ${score}${medal} in Mochi Hop!\n${stats}\nBeat me 👉 ${challengeLink()}`;
   }
 
+  // Link-preview image (1200x630) for chat apps and social posts.
+  function makePromoCanvas() {
+    const CW = 600, CH = 315, k = 2;
+    const cv = document.createElement('canvas');
+    cv.width = CW * k; cv.height = CH * k;
+    const prev = ctx;
+    ctx = cv.getContext('2d');
+    ctx.scale(k, k);
+    try {
+      const g = ctx.createLinearGradient(0, 0, 0, CH);
+      g.addColorStop(0, '#8fd3ff'); g.addColorStop(1, '#fff1d6');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH);
+      for (let i = 0; i < 26; i++) drawPetal((i * 97 + 13) % CW, (i * 61) % 280 + 6, 4 + (i % 3), i, 'rgba(255,170,200,0.8)');
+      ctx.fillStyle = '#5a8f4e'; ctx.fillRect(0, CH - 52, CW, 6);
+      ctx.fillStyle = '#eadbb3'; ctx.fillRect(0, CH - 46, CW, 46);
+      // two skewers and a happy Mochi hopping between them
+      const tip = 132;
+      drawStick(430, -10, tip, true);
+      for (let i = 2; i >= 0; i--) drawBall(i, 430, tip - TIP - DANGO_R + 4 - i * DANGO_STEP);
+      drawStick(430, tip + 120, CH - 40, false);
+      for (let i = 2; i >= 0; i--) drawBall(i, 430, tip + 120 + TIP + DANGO_R - 4 + i * DANGO_STEP);
+      drawMochi(372, 196, 2.3, SKINS[0], { happy: true, spin: 0, perk: 1 });
+      text('Mochi', 150, 82, 64, '#fff8f0');
+      text('HOP', 150, 140, 46, '#ff8fb3');
+      text('Can you beat my score?', 150, 196, 22, '#fff');
+      ctx.fillStyle = 'rgba(58,42,63,0.9)';
+      roundRect(48, 230, 204, 40, 20); ctx.fill();
+      ctx.fillStyle = '#ff7aa2';
+      roundRect(48, 226, 204, 40, 20); ctx.fill();
+      ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2.5; ctx.stroke();
+      text('Play free', 150, 247, 20, '#fff');
+    } finally { ctx = prev; }
+    return cv;
+  }
+
+  // App icon: Mochi on pink. Maskable icons keep the art inside the safe circle.
+  function makeIconCanvas(size, maskable) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    const prev = ctx;
+    ctx = cv.getContext('2d');
+    try {
+      ctx.fillStyle = '#ffb3cc';
+      if (maskable) ctx.fillRect(0, 0, size, size);
+      else { roundRect(0, 0, size, size, size * 0.22); ctx.fill(); }
+      const k = size / 100 * (maskable ? 0.8 : 1);
+      ctx.translate(size / 2, size / 2 + 8 * k);
+      drawMochi(0, 0, 1.75 * k, SKINS[0], { spin: 0, perk: 0.6 });
+    } finally { ctx = prev; }
+    return cv;
+  }
+
   function shareScore() {
     const cv = makeShareCanvas();
     const msg = shareText();
@@ -1868,18 +2375,48 @@
     });
   }
 
+  function drawWind() {
+    const active = gustT < GUST_TIME;
+    const a = active ? Math.min(1, gustT / 0.3) : (GUST_WARN + GUST_TIME - gustT) / GUST_WARN;
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 * a})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) {
+      const y = ((i * 73) % (groundY() - 40)) + 20;
+      const x = W - ((time * 700 + i * 137) % (W + 120));
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 50, y + (active ? 10 : 2)); ctx.stroke();
+    }
+  }
+
+  function drawHint(h) {
+    const a = clamp(h.life / 0.4, 0, 1) * clamp((2.6 - h.life) / 0.2, 0, 1);
+    ctx.globalAlpha = a;
+    ctx.font = '900 14px "Trebuchet MS", Verdana, sans-serif';
+    const w = ctx.measureText(h.msg).width + 22;
+    const x = clamp(h.x, w / 2 + 6, W - w / 2 - 6);
+    ctx.fillStyle = '#fff6ea';
+    roundRect(x - w / 2, h.y - 15, w, 30, 15); ctx.fill();
+    ctx.strokeStyle = '#3a2a3f'; ctx.lineWidth = 2; ctx.stroke();
+    if (h.follow) {
+      ctx.fillStyle = '#fff6ea';
+      ctx.beginPath(); ctx.moveTo(h.x - 7, h.y + 14); ctx.lineTo(h.x + 7, h.y + 14); ctx.lineTo(h.x, h.y + 22); ctx.fill();
+    }
+    text(h.msg, x, h.y + 1, 14, '#b0466e', 'center', null);
+    ctx.globalAlpha = 1;
+  }
+
   function drawHud() {
-    const pop = 1 + scorePop * 0.35;
+    const pop = 1 + (reducedMotion() ? 0 : scorePop * 0.35);
     ctx.save();
     ctx.translate(W / 2, 70 + topInset);
     ctx.scale(pop, pop);
     text(String(score), 0, 0, 56, '#fff');
     ctx.restore();
-    if (runPetals > 0) petalCounter(26, 36 + topInset, runPetals);
+    const lefty = save.settings.lefty;
+    if (runPetals > 0) petalCounter(lefty ? W - 70 : 26, 36 + topInset, runPetals);
     if (target > 0) text(score > target ? `BEAT ${target}!` : `TARGET ${target}`, W / 2, 112 + topInset, 14, score > target ? '#8ff0b4' : '#ffe36e');
     else if (mode === 'daily') text(`DAILY #${dailyNumber(runDate)}`, W / 2, 112 + topInset, 13, '#e3d6ff');
     if (state === 'play' && !paused) {
-      const bx = W - 34, by = 36 + topInset;
+      const bx = lefty ? 34 : W - 34, by = 36 + topInset;
       roundIcon('pause', bx, by);
       ui.pause = { x: bx - 30, y: by - 30, w: 60, h: 60 };   // generous touch target
       ctx.fillRect(bx - 7, by - 8, 5, 16);
@@ -1948,7 +2485,7 @@
   function draw() {
     for (const k in ui) delete ui[k];
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    if (shake > 0) ctx.translate(rand(-shake, shake) * 0.5, rand(-shake, shake) * 0.5);
+    if (shake > 0 && !reducedMotion()) ctx.translate(rand(-shake, shake) * 0.5, rand(-shake, shake) * 0.5);
 
     drawBackground(skyAt(displaySky));
     if (state !== 'title') drawObstacles();
@@ -1956,8 +2493,10 @@
 
     if (state !== 'title') drawMochi(mochi.x, mochi.y, 1, SKINS[skinIndex], mochiOpts());
     drawParticles();
+    if (gustT > 0 && state === 'play') drawWind();
+    for (const h of hints) drawHint(h);
 
-    if (flash > 0) {
+    if (flash > 0 && !reducedMotion()) {
       ctx.fillStyle = `rgba(255,255,255,${flash * 0.6})`;
       ctx.fillRect(-20, -20, W + 40, H + 40);
     }
@@ -1967,13 +2506,14 @@
     else if ((state === 'play' || state === 'dying') && !paused) drawHud();
     else if (state === 'over') drawOver();
 
+    if (settingsOpen) drawSettings();
     if (paused) drawPause();
     else if (countdown > 0) {
       const n = Math.ceil(countdown / 0.5);
       const f = (countdown % 0.5) / 0.5;
       ctx.save();
       ctx.translate(W / 2, H * 0.42);
-      ctx.scale(1 + f * 0.4, 1 + f * 0.4);
+      if (!reducedMotion()) ctx.scale(1 + f * 0.4, 1 + f * 0.4);
       ctx.globalAlpha = 0.4 + 0.6 * f;
       text(String(n), 0, 0, 72, '#fff');
       ctx.restore();
@@ -2017,7 +2557,17 @@
       return;
     }
 
+    if (settingsOpen) { tapSettings(x, y); return; }
+    if (state === 'title' && reveal) { if (time - reveal.t > 0.6) { reveal = null; sfx.click(); } return; }
     if (state === 'title' && missionsOpen) { missionsOpen = false; sfx.click(); return; }
+    if (state === 'title' && bookOpen) {
+      for (let i = 0; i < SKINS.length; i++) {
+        if (hitTest('cell' + i, x, y)) { skinIndex = i; changeSkin(0); break; }
+      }
+      bookOpen = false;
+      sfx.click();
+      return;
+    }
     if (state === 'title' || state === 'over') {
       if (hitTest('mute', x, y)) {
         save.muted = !save.muted;
@@ -2025,16 +2575,13 @@
         sfx.click();
         return;
       }
-      if (hitTest('haptics', x, y)) {
-        save.haptics = !save.haptics;
-        store.set('haptics', save.haptics);
-        haptic('click');
-        sfx.click();
-        return;
-      }
+      if (hitTest('settings', x, y)) { settingsOpen = true; sfx.click(); return; }
     }
 
     if (state === 'title') {
+      if (hitTest('book', x, y)) { bookOpen = true; sfx.click(); return; }
+      if (hitTest('store', x, y)) { window.open(PLAY_STORE_URL, '_blank'); return; }
+      if (hitTest('install', x, y) && installPrompt) { installPrompt.prompt(); installPrompt = null; return; }
       if (hitTest('missions', x, y)) {
         missionsOpen = true;
         sfx.click();
@@ -2061,7 +2608,7 @@
       }
       if (!save.unlocked.includes(skin.id)) {
         if (hitTest('play', x, y)) {
-          if (save.petals >= skin.cost) {
+          if (inSeason(skin) && save.petals >= skin.cost) {
             save.petals -= skin.cost;
             save.unlocked.push(skin.id);
             save.skin = skin.id;
@@ -2071,7 +2618,8 @@
             sfx.unlock();
             haptic('heavy');
             mochi.spinV = 40;
-            for (let i = 0; i < 24; i++) spawnParticle(W / 2, mochi.y, rand(-220, 220), rand(-320, 40), 1, rand(4, 7), '#ffb3cc', 'petal');
+            reveal = { skin, t: time };
+            for (let i = 0; i < 40; i++) spawnParticle(W / 2, H * 0.42, rand(-260, 260), rand(-380, 40), 1.4, rand(4, 7), i % 2 ? '#ffb3cc' : '#ffe36e', 'petal');
           } else {
             uiShake = 1;
             sfx.nope();
@@ -2159,8 +2707,8 @@
 
   // test hook
   window.__mochi = {
-    get state() { return state; }, get score() { return score; }, get W() { return W; },
+    get state() { return state; }, get score() { return score; }, set score(v) { score = v; displaySky = v; }, get W() { return W; },
     mochi, pipes: () => pipes, save, ballCenters, COL_W, DANGO_R,
-    get mode() { return mode; }, get paused() { return paused; }, get countdown() { return countdown; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
+    get mode() { return mode; }, makePromoCanvas, makeIconCanvas, get paused() { return paused; }, get countdown() { return countdown; }, get target() { return target; }, shareText, get near() { return nearCount; }, makeShareCanvas,
   };
 })();

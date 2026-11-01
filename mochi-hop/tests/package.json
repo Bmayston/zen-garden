@@ -1,0 +1,7 @@
+{
+  "name": "mochi-hop-tests",
+  "private": true,
+  "description": "Headless browser smoke tests for Mochi Hop",
+  "scripts": { "test": "node smoke.js" },
+  "devDependencies": { "playwright": "1.48.2" }
+}

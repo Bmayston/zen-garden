@@ -4,6 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Mochi Hop</title>
+  <meta name="description" content="Hop Mochi between dango skewers. One tap, free, no install. Can you beat my score?">
+  <meta name="theme-color" content="#ffb3cc">
+  <!-- Link previews in WhatsApp, iMessage, Discord, X, etc. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mochi Hop">
+  <meta property="og:title" content="Mochi Hop: can you beat my score?">
+  <meta property="og:description" content="Hop Mochi between dango skewers. One tap, free, play right in your browser.">
+  <meta property="og:url" content="https://bmayston.github.io/zen-garden/play/">
+  <meta property="og:image" content="https://bmayston.github.io/zen-garden/play/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <!-- Installable web app -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <style>
     html, body {
       margin: 0; padding: 0; height: 100%; overflow: hidden;
@@ -19,5 +36,11 @@
   <canvas id="game"></canvas>
   <div id="safe-probe" style="position:absolute;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top)"></div>
   <script src="game.js"></script>
+  <script>
+    // Offline support for the web version only (not inside the Android app).
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

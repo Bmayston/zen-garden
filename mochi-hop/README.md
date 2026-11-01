@@ -18,31 +18,20 @@ mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its 
 - **One tap to play, one tap to retry.** After a crash, tapping anywhere starts the next
   run about 0.45 seconds later. Returning players skip the "Get Ready" screen.
 - **Hanami dango obstacles** with sharp skewer tips pointing into the gap.
-- **Sakura petals** float between skewers. Catch them to unlock friends, who all keep
-  the sprout:
-  | Friend | Petals | Accessory |
-  |---|---|---|
-  | Mochi | free | (just the sprout) |
-  | Sakura | 25 | cherry blossom |
-  | Matcha | 60 | tea whisk |
-  | Ube | 120 | bow |
-  | Golden | 250 | crown |
-- **Close calls:** scrape past a skewer tip and you get a "Close! +1" sparkle, a petal
-  and a little haptic tick.
-- **Daily challenge:** the same seeded skewer layout for everyone each day, with today's
-  best score and a day streak.
-- **Missions:** three goals at a time (such as "3 close calls in one run" or "Score 10
-  without a petal") that pay out petals and are replaced once completed.
-- **Challenge sharing:** CHALLENGE on the game-over screen sends a "BEAT MY 26" card plus
-  a short emoji summary and a link. The link opens the free web version
-  (`https://bmayston.github.io/zen-garden/play/?c=<date>&s=<score>`) straight into the same
-  daily course with your score as the target, so friends can play without installing.
-  The web version is published by `.github/workflows/mochi-hop-web.yml` (enable GitHub Pages
-  with source "GitHub Actions" once).
-- **Pause:** a pause button (top right) during a run shows your score, petals, close calls
-  and live mission progress, with RESUME (3-2-1 countdown) or END RUN back to the menu.
-  Ending a run keeps petals and progress but doesn't count as a splat. The game also pauses
-  itself when you leave the app; Android Back resumes from the pause screen.
+- **Sakura petals** float between skewers. Spend them on **13 friends** in the collection
+  book (FRIENDS on the title screen). Each keeps the sprout and has its own look, hop pitch
+  and splat colour. Three are seasonal (Kabocha in Oct–Nov, Yuki in Dec–Feb, Hanami in
+  Mar–May) and can only be unlocked in season. Unlocking plays a "New friend!" reveal.
+- **Late-run variety:** golden dango gaps worth 3 points (from 12), bobbing skewers (from 25),
+  and at night paper lanterns plus gentle telegraphed wind gusts (from 28). In the daily
+  challenge these are seeded too, so everyone gets the same ones.
+- **Celebrations:** NEW BEST / DAILY BEST / "You beat 26!" bursts mid-run, a medal award
+  animation and the unlock reveal.
+- **First-time tips** for petals, close calls, golden gaps and wind, each shown once.
+- **Missions:** three rotating goals plus **weekly missions** (three bigger goals that reset
+  each Monday, with a +60 bonus for finishing all three).
+- **Settings** (gear icon): music and sound-effect volume, vibration, reduced motion (no shake
+  or flashes) and a left-handed layout.
 - **Difficulty in clear steps:** very gentle for the first 3 gaps, then harder at 3, 10,
   25 and 50 points.
 - **Sound:** a signature hop "boing", a score chime that climbs the scale with each gap,
@@ -55,6 +44,25 @@ mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its 
 - **Saves** go to Android's own app storage (SharedPreferences), not just the WebView.
 - **Notch-aware:** the score and buttons move below camera cutouts.
 - No image or audio files: everything is drawn and synthesized in code.
+
+## Web version, link previews and install
+
+The same game runs in any browser and is published to GitHub Pages at
+`https://bmayston.github.io/zen-garden/play/` by `.github/workflows/mochi-hop-web.yml`
+(one-time setup: Settings → Pages → Source: GitHub Actions, then merge to `main`).
+
+- `index.html` has Open Graph tags, so links show a Mochi preview card (`og.png`).
+- `manifest.webmanifest`, icons and `sw.js` make it installable ("Add to home screen") and
+  playable offline. Bump `VERSION` in `sw.js` when game files change.
+- Set `PLAY_STORE_URL` in `game.js` once the app is live to show a Google Play button on the web.
+- `node mochi-hop/tools/render-assets.js` redraws `og.png` and the icons from the game's art.
+
+## Tests
+
+`node mochi-hop/tests/smoke.js` plays the real game in headless Chromium: scoring, one-tap
+retry, menu, daily determinism, saved missions, pause/resume/end run, share card and link,
+challenge links, settings and "no JavaScript errors". CI runs it before every Android build
+and before publishing the web version.
 
 ## Project layout
 
