@@ -324,28 +324,18 @@
     logoReady ? null : new Promise(res => { logoImg.addEventListener('load', res); logoImg.addEventListener('error', res); }),
   ]);
 
-  const SHARE_URL = 'https://bmayston.github.io/zen-garden/play/';
-  // Fill in once the game is on Google Play; the web version then shows a "Get it on Google Play" button.
-  const PLAY_STORE_URL = '';
-  const isWeb = !native;
-  let installPrompt = null;
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
-  window.addEventListener('appinstalled', () => { installPrompt = null; });
+  // Shared scores send friends to the game on Google Play. The URL comes from the app's ID
+  // (applicationId in app/build.gradle.kts), so it starts working as soon as the listing exists;
+  // during closed testing only opted-in testers can open it.
+  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.mochihop.game';
   const DAILY_EPOCH = Date.UTC(2026, 10, 1);   // 1 Nov 2026 = Daily #1
   function dailyNumber(key) {
     const [y, m, d] = key.split('-').map(Number);
     return Math.round((Date.UTC(y, m - 1, d) - DAILY_EPOCH) / 86400000) + 1;
   }
-  // A challenge link looks like ?c=2026-11-01&s=26 (daily course) or ?s=26 (classic).
-  const challenge = (() => {
-    try {
-      const q = new URLSearchParams(location.search);
-      const sc = parseInt(q.get('s'), 10);
-      if (!(sc >= 0 && sc < 10000)) return null;
-      const c = q.get('c');
-      return { score: sc, date: c && /^\d{4}-\d{2}-\d{2}$/.test(c) ? c : null };
-    } catch (e) { return null; }
-  })();
+  // A friend's score to beat ({ score, date }). Nothing sets this yet: a later update can fill it from
+  // the Google Play install referrer so a shared challenge opens straight into the same course.
+  const challenge = null;
   let runDate = '';          // date whose skewers the daily run uses
   let target = 0;            // score to beat in a challenge run (0 = none)
 
@@ -2142,8 +2132,6 @@
       mine.forEach((k, i) => drawMochi(x + (i - (n - 1) / 2) * 10, y + 6 - (i === n - 1 ? 0 : 3), i === n - 1 ? 0.6 : 0.48, k, { spin: 0, noShadow: true, happy: i === n - 1 }));
     }, 0);
 
-    if (isWeb && PLAY_STORE_URL) pillButton('store', cx, 604 + ty, 210, 'GET IT ON GOOGLE PLAY', 'book', 0);
-    else if (isWeb && installPrompt) pillButton('install', cx, 604 + ty, 170, 'ADD TO HOME', 'book', 0);
 
     petalCounter(26, 36 + topInset, save.petals);
     text(`BEST ${save.best}`, W / 2, 37 + topInset, 17, '#fff');
@@ -2611,17 +2599,13 @@
       ctx.fillStyle = '#fd64a6';
       roundRect(cx - 130, 401, 260, 36, 18); ctx.fill();
       ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
-      text('Tap the link · play free', cx, 420, 17, '#fff');
+      text('Free on Google Play', cx, 420, 17, '#fff');
     } finally {
       ctx = prev;
     }
     return cv;
   }
 
-  function challengeLink() {
-    const q = mode === 'daily' ? `?c=${runDate}&s=${score}` : `?s=${score}`;
-    return SHARE_URL + q;
-  }
 
   function shareText() {
     const m = medalFor(score);
@@ -2629,9 +2613,9 @@
     const stats = `🌸 ${caught}  ✨ ${nearCount} close call${nearCount === 1 ? '' : 's'}`;
     if (mode === 'daily') {
       const streak = save.daily.streak > 1 ? `  🔥 ${save.daily.streak}` : '';
-      return `🍡 Mochi Hop Daily #${dailyNumber(runDate)}: ${score}${medal}\n${stats}${streak}\nSame skewers for everyone today. Beat me 👉 ${challengeLink()}`;
+      return `🍡 Mochi Hop Daily #${dailyNumber(runDate)}: ${score}${medal}\n${stats}${streak}\nEveryone gets the same course today. Get Mochi Hop free and beat me 👉 ${PLAY_STORE_URL}`;
     }
-    return `🍡 I scored ${score}${medal} in Mochi Hop!\n${stats}\nBeat me 👉 ${challengeLink()}`;
+    return `🍡 I scored ${score}${medal} in Mochi Hop!\n${stats}\nGet it free and beat me 👉 ${PLAY_STORE_URL}`;
   }
 
   // Link-preview image (1200x630) for chat apps and social posts.
@@ -2663,7 +2647,7 @@
       ctx.fillStyle = '#fd64a6';
       roundRect(400, 272, 150, 32, 16); ctx.fill();
       ctx.strokeStyle = PLUM; ctx.lineWidth = 2.5; ctx.stroke();
-      text('Play free', 475, 289, 18, '#fff');
+      text('Free on Google Play', 475, 289, 14, '#fff');
     } finally { ctx = prev; }
     return cv;
   }
@@ -3012,8 +2996,6 @@
 
     if (state === 'title') {
       if (hitTest('book', x, y)) { bookOpen = true; sfx.click(); return; }
-      if (hitTest('store', x, y)) { window.open(PLAY_STORE_URL, '_blank'); return; }
-      if (hitTest('install', x, y) && installPrompt) { installPrompt.prompt(); installPrompt = null; return; }
       if (hitTest('missions', x, y)) {
         missionsOpen = true;
         sfx.click();

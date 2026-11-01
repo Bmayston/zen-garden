@@ -1,8 +1,7 @@
 // Renders all brand artwork from the game's own drawing code, so it always matches the game.
 //   node mochi-hop/tools/render-assets.js
 // Writes:
-//   game/: og.png (link preview), icon-192.png, icon-512.png, icon-maskable-512.png
-//   store/: play-icon-512.png, feature-graphic-1024x500.png
+//   store/: play-icon-512.png, feature-graphic-1024x500.png, promo-1200x630.png (social posts)
 //   res/mipmap-*/: ic_launcher_foreground/background/monochrome.png (Android adaptive icon)
 const path = require('path');
 const fs = require('fs');
@@ -24,10 +23,7 @@ const DENSITIES = { mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432 
     const m = window.__mochi;
     const png = (cv) => cv.toDataURL('image/png').split(',')[1];
     const files = {
-      'GAME/og.png': png(m.makePromoCanvas()),
-      'GAME/icon-192.png': png(m.makeIconCanvas(192, 'web')),
-      'GAME/icon-512.png': png(m.makeIconCanvas(512, 'web')),
-      'GAME/icon-maskable-512.png': png(m.makeIconCanvas(512, 'maskable')),
+      'STORE/promo-1200x630.png': png(m.makePromoCanvas()),
       'STORE/play-icon-512.png': png(m.makeIconCanvas(512, 'play')),
       'STORE/feature-graphic-1024x500.png': png(m.makeFeatureCanvas()),
     };

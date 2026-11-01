@@ -3,7 +3,7 @@
 Everything Google Play asks for, plus the brand files. Regenerate the art with:
 
 ```bash
-node mochi-hop/tools/render-assets.js       # icons, link preview, feature graphic
+node mochi-hop/tools/render-assets.js       # icons, feature graphic, promo image
 node mochi-hop/tools/render-screenshots.js  # phone screenshots (plays the real game)
 python3 mochi-hop/tools/cut-logo.py store/brand/logo-original.png store/brand/logo-transparent.png  # needs numpy, scipy, pillow
 ```
@@ -14,6 +14,7 @@ python3 mochi-hop/tools/cut-logo.py store/brand/logo-original.png store/brand/lo
 | Feature graphic | `feature-graphic-1024x500.png` | 1024 × 500, logo centred, nothing key near the edges |
 | Phone screenshots | `screenshots/*.jpg` | six 1080 × 1920 images, upload in numbered order |
 | Store text | `listing.md` | title, short and full description |
+| Social / promo image | `promo-1200x630.png` | for posts and announcements |
 
 ## Brand
 

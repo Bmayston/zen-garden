@@ -54,25 +54,19 @@ mouth mid-hop, and squeezes its eyes shut (> <) when it splats. Its hop has its 
 - **Notch-aware:** the score and buttons move below camera cutouts.
 - No image or audio files: everything is drawn and synthesized in code.
 
-## Web version, link previews and install
+## Sharing
 
-The same game runs in any browser and is published to GitHub Pages at
-`https://bmayston.github.io/zen-garden/play/` by `.github/workflows/mochi-hop-web.yml`
-(one-time setup: Settings → Pages → Source: GitHub Actions, then merge to `main`).
-
-- `index.html` has Open Graph tags, so links show a Mochi preview card (`og.png`).
-- `manifest.webmanifest`, icons and `sw.js` make it installable ("Add to home screen") and
-  playable offline. Bump `VERSION` in `sw.js` when game files change.
-- Set `PLAY_STORE_URL` in `game.js` once the app is live to show a Google Play button on the web.
-- `node mochi-hop/tools/render-assets.js` redraws `og.png`, the web and Android icons and the Play
-  feature graphic from the game's art; `tools/render-screenshots.js` makes the store screenshots.
+CHALLENGE on the game-over screen shares a "BEAT MY 26" card plus a short summary and the game's
+Google Play link (`PLAY_STORE_URL` in `game.js`, built from the app ID `com.mochihop.game`).
+On the daily challenge everyone gets the same course, so friends can compete fairly. There is no
+browser version; the HTML/JS in `assets/game` only runs inside the Android app.
 
 ## Tests
 
 `node mochi-hop/tests/smoke.js` plays the real game in headless Chromium: scoring, one-tap
 retry, menu, daily determinism, saved missions, pause/resume/end run, share card and link,
-challenge links, settings and "no JavaScript errors". CI runs it before every Android build
-and before publishing the web version.
+settings, the missions board, the friends album and "no JavaScript errors". CI runs it before
+every Android build.
 
 ## Project layout
 
@@ -85,7 +79,7 @@ mochi-hop/
 └── app/src/main/res/           ← app icon (Mochi), theme, strings
 ```
 
-## Play it right now (no phone needed)
+## Try it on a computer (for development)
 
 Open `app/src/main/assets/game/index.html` in any browser. Click or press Space to hop,
 and use the arrow keys on the title screen to switch friends.

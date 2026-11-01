@@ -27,8 +27,8 @@ times of year. Each one has its own look and hop.
 A new course every day, the same for everyone. Keep your streak going and compare scores.
 
 💌 CHALLENGE YOUR FRIENDS
-Share a "Beat my score" card. Your friends can play your exact course right in their browser,
-no install needed.
+Share a "Beat my score" card with your friends. On the daily challenge they get exactly the same
+course as you, so it's a fair fight.
 
 🎯 MISSIONS AND MEDALS
 Daily and weekly missions, Bronze to Jade medals, and plenty of petals to earn.

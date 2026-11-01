@@ -141,15 +141,7 @@ const check = (name, ok, detail = '') => {
   // 8. Share card and text
   const share = await g(() => { const c = window.__mochi.makeShareCanvas(); return [c.width, c.height, window.__mochi.shareText()]; });
   check('share card renders at 1080x1350', share[0] === 1080 && share[1] === 1350);
-  check('share text includes a challenge link', /https:\/\/\S+\?(c=\d{4}-\d{2}-\d{2}&)?s=\d+/.test(share[2]), share[2].split('\n').pop());
-
-  // 9. Challenge links set a target on the same daily course
-  await fresh(URL + '?c=2026-11-01&s=26');
-  await tap('daily');
-  await page.mouse.click(VW / 2, V(500));
-  const ch = await g(() => [window.__mochi.mode, window.__mochi.target]);
-  check('challenge link starts a daily run with target 26', ch[0] === 'daily' && ch[1] === 26, JSON.stringify(ch));
-  await crash();
+  check('share text links to the game on Google Play', share[2].includes('https://play.google.com/store/apps/details?id=com.mochihop.game'), share[2].split('\n').pop());
 
   // 10. Settings persist
   await fresh();
